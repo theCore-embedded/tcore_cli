@@ -116,7 +116,16 @@ def do_bootstrap(args):
 
 # Initializes empty project, or downloads existing one using Git.
 def do_init(args):
-    logger.error('Not implemented yet!')
+    if not args.remote:
+        logger.error('initializing an empty project is not yet implemented, use remote option')
+        exit(1)
+
+    if args.outdir:
+        out_dir = args.outdir
+    else:
+        out_dir = ''
+
+    run_with_nix('git clone {} {}'.format(args.remote, out_dir))
 
 # Deletes Nix and theCore
 def do_purge(args):
@@ -229,8 +238,9 @@ def do_compile(args):
     thecore_thirdparty_param = '-DTHECORE_THIRDPARTY_DIR=' + CORE_THIRDPARTY_DIR
     thecore_dir_param = '-DCORE_DIR=' + CORE_SRC_DIR
 
-    run_with_nix_shell('cmake {} {} {} {} {}'
-        .format(thecore_dir_param, cmake_build_type, cmake_toolchain, thecore_cfg_param, src_dir))
+    run_with_nix_shell('cmake {} {} {} {} {} {}'
+        .format(thecore_dir_param, thecore_thirdparty_param, cmake_build_type,
+            cmake_toolchain, thecore_cfg_param, src_dir))
 
     run_with_nix_shell('make')
     logger.info('project built successfully')
