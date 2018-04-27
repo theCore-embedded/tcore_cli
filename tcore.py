@@ -148,7 +148,7 @@ def do_compile(args):
     with open(metafile, 'r') as fl:
         meta_cfg = json.load(fl)
 
-    logger.info('compiling project: ' + meta_cfg['name'])
+    logger.info('current project: ' + meta_cfg['name'])
 
     if args.list_targets:
         targets = [ [ 'Target name', 'Configuration file', 'Description' ] ]
@@ -236,14 +236,28 @@ def do_compile(args):
 
     thecore_cfg_param = '-DTHECORE_TARGET_CONFIG_FILE=' + config_json_path
     thecore_thirdparty_param = '-DTHECORE_THIRDPARTY_DIR=' + CORE_THIRDPARTY_DIR
+    thecore_thirdparty_worktrees = '-DTHECORE_BUILD_THIRDPARTY_DIR=' + src_dir + '/thirdparties'
     thecore_dir_param = '-DCORE_DIR=' + CORE_SRC_DIR
 
-    run_with_nix_shell('cmake {} {} {} {} {} {}'
-        .format(thecore_dir_param, thecore_thirdparty_param, cmake_build_type,
-            cmake_toolchain, thecore_cfg_param, src_dir))
+    run_with_nix_shell('cmake {} {} {} {} {} {} {}'
+        .format(thecore_dir_param, thecore_thirdparty_param, thecore_thirdparty_worktrees,
+            cmake_build_type, cmake_toolchain, thecore_cfg_param, src_dir))
 
     run_with_nix_shell('make')
     logger.info('project built successfully')
+
+# Runs a command within theCore environment, optionally with sudo permission
+def do_runenv(args):
+    cmd = ' '.join(args.command)
+
+    if args.sudo:
+        logger.info('Executing: sudo ' + cmd) # Trick user
+        # $(which sudo) is required to run sudo within Nix shell
+        run_with_nix_shell('$(which sudo) ' + cmd)
+    else:
+        logger.info('Executing: ' + cmd)
+        run_with_nix_shell(cmd)
+
 
 # ------------------------------------------------------------------------------
 # Command line parsing
@@ -294,6 +308,16 @@ compile_parser.add_argument('-l', '--list-targets', action = 'store_true',
 compile_parser.add_argument('-c', '--clean', action = 'store_true',
     help = 'Clean build')
 compile_parser.set_defaults(handler = do_compile)
+
+# Runenv subcommand
+
+runenv_parser = subparsers.add_parser('runenv',
+    help = 'Run arbitrary command inside theCore environment')
+runenv_parser.add_argument('-s', '--sudo', action = 'store_true',
+    help = 'Run command with root privileges using sudo.')
+runenv_parser.add_argument('command', nargs='+',
+    help = 'Command to execute.')
+runenv_parser.set_defaults(handler = do_runenv)
 
 args = parser.parse_args()
 
