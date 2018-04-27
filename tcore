@@ -321,5 +321,8 @@ runenv_parser.set_defaults(handler = do_runenv)
 
 args = parser.parse_args()
 
-if args.handler:
+if hasattr(args, 'handler') and args.handler:
     args.handler(args)
+else:
+    logger.error('no operation given')
+    parser.print_help()
