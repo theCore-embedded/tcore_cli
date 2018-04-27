@@ -92,7 +92,7 @@ def do_bootstrap(args):
         if os.path.isdir(CORE_SRC_DIR):
             logger.info('remove old theCore files')
             shutil.rmtree(CORE_SRC_DIR)
-        
+
         if os.path.isfile(CORE_INSTALLFILE):
             logger.info('remove theCore installfile')
             os.remove(CORE_INSTALLFILE)
@@ -112,13 +112,15 @@ def do_bootstrap(args):
         # Initialize Nix (download all dependencies)
         run_with_nix_shell('true')
 
+    logger.info('theCore successfully installed!')
+
 # Initializes empty project, or downloads existing one using Git.
 def do_init(args):
-    logger.warn('TODO: implement')
+    logger.error('Not implemented yet!')
 
 # Deletes Nix and theCore
 def do_purge(args):
-    logger.warn('TODO: implement')
+    logger.error('Not implemented yet!')
 
 # Compiles project specified in arguments
 def do_compile(args):
@@ -143,9 +145,9 @@ def do_compile(args):
         targets = [ [ 'Target name', 'Configuration file', 'Description' ] ]
         # Only target list is requested, ignoring other operations
         for target in meta_cfg['targets']:
-            targets.append([target['name'], target['config'], target['description']])    
+            targets.append([target['name'], target['config'], target['description']])
 
-        logger.info('\nSupported targets:\n' 
+        logger.info('\nSupported targets:\n'
                 + tabulate.tabulate(targets, tablefmt = "grid", headers = 'firstrow'))
         exit(0)
     elif not args.target:
@@ -173,7 +175,7 @@ def do_compile(args):
         if args.buildtype != 'none':
             build_dir = build_dir + '-' + args.buildtype
 
-    # If special flag is set, build treated as host-oriented. No toolchain is 
+    # If special flag is set, build treated as host-oriented. No toolchain is
     # required
     host_build = 'host' in target_cfg and not target_cfg['host']
 
@@ -182,7 +184,7 @@ def do_compile(args):
             toolchain_path = src_dir + '/' + target_cfg['toolchain']
         else:
             toolchain_path = CORE_TOOLCHAIN_DIR + target_cfg['toolchain']
-    
+
         if not os.path.isfile(toolchain_path):
             logger.error('no such toolchain found: ' + toolchain_path)
 
@@ -200,7 +202,7 @@ def do_compile(args):
         else:
             logger.info('nothing to clean')
 
-    # To generate build files with CMake we must first step into 
+    # To generate build files with CMake we must first step into
     # the build  directory
 
     if not os.path.isdir(build_dir):
@@ -231,6 +233,7 @@ def do_compile(args):
         .format(thecore_dir_param, cmake_build_type, cmake_toolchain, thecore_cfg_param, src_dir))
 
     run_with_nix_shell('make')
+    logger.info('project built successfully')
 
 # ------------------------------------------------------------------------------
 # Command line parsing
@@ -238,39 +241,47 @@ def do_compile(args):
 parser = argparse.ArgumentParser(description = 'theCore framework CLI')
 subparsers = parser.add_subparsers(help = 'theCore subcommands')
 
-bootstrap_parser = subparsers.add_parser('bootstrap', 
+# Boostrap subcommand
+
+bootstrap_parser = subparsers.add_parser('bootstrap',
     help = 'Installs theCore development environment')
-bootstrap_parser.add_argument('-f', '--force', action = 'store_true', 
+bootstrap_parser.add_argument('-f', '--force', action = 'store_true',
     help = 'Force (re)install theCore dev environment')
 bootstrap_parser.set_defaults(handler = do_bootstrap)
 
-purge_parser = subparsers.add_parser('purge', 
+purge_parser = subparsers.add_parser('purge',
     help = 'Deletes theCore development environment')
 purge_parser.set_defaults(handler = do_purge)
 
-init_parser = subparsers.add_parser('init', 
+# Init subcommand
+
+init_parser = subparsers.add_parser('init',
     help = 'Initialize project based on theCore')
-init_parser.add_argument('-r', '--remote', type = str, 
+init_parser.add_argument('-r', '--remote', type = str,
     help = 'Git remote to download project from')
+init_parser.add_argument('-o', '--outdir', type = str,
+    help = 'Output directory to place a project in')
 init_parser.set_defaults(handler = do_init)
 
-compile_parser = subparsers.add_parser('compile', 
+# Compile subcommand
+
+compile_parser = subparsers.add_parser('compile',
     help = 'Build project')
-compile_parser.add_argument('-s', '--source', type = str, 
-    help = 'Path to the source code. Defaults to current directory.', 
+compile_parser.add_argument('-s', '--source', type = str,
+    help = 'Path to the source code. Defaults to current directory.',
     default = os.getcwd())
-compile_parser.add_argument('-b', '--builddir', type = str, 
-    help = 'Path to the build directory. Defaults to ./build/<target_name>-<build_type>,' 
+compile_parser.add_argument('-b', '--builddir', type = str,
+    help = 'Path to the build directory. Defaults to ./build/<target_name>-<build_type>,'
             + ' where <target_name> is the selected target and <build_type> '
             + ' is a build type supplied with --buildtype parameter')
-compile_parser.add_argument('--buildtype', type = str, 
+compile_parser.add_argument('--buildtype', type = str,
     help = 'Build type. Default is none',
     choices = [ 'debug', 'release', 'min_size', 'none' ], default = 'none')
-compile_parser.add_argument('-t', '--target', type = str, 
+compile_parser.add_argument('-t', '--target', type = str,
     help = 'Target name to compile for')
-compile_parser.add_argument('-l', '--list-targets', action = 'store_true', 
+compile_parser.add_argument('-l', '--list-targets', action = 'store_true',
     help = 'List supported targets')
-compile_parser.add_argument('-c', '--clean', action = 'store_true', 
+compile_parser.add_argument('-c', '--clean', action = 'store_true',
     help = 'Clean build')
 compile_parser.set_defaults(handler = do_compile)
 
