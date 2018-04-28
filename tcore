@@ -289,13 +289,8 @@ def do_compile(args):
     with open('output.json', 'w') as outputfile:
         outputfile.write(json.dumps(output_cfg, indent=4) + '\n')
 
-# Compiles project specified in arguments
+# Compiles project specified in arguments or prints avaliable binaries
 def do_flash(args):
-
-    # TODO: implement
-    if args.builddir:
-        return
-
     metafile = get_metafile()
     if not metafile:
         logger.error('meta.json must be present in the project directory')
@@ -312,10 +307,14 @@ def do_flash(args):
     build_subdirs = []
     binaries_info = []
 
-    with os.scandir(builds_dir) as it:
-        for entry in it:
-            if entry.is_dir():
-                build_subdirs.append(entry.path)
+    # In case if  build directrory explicitly given, no need to traverse
+    if args.builddir:
+        build_subdirs.append(args.builddir)
+    else:
+        with os.scandir(builds_dir) as it:
+            for entry in it:
+                if entry.is_dir():
+                    build_subdirs.append(entry.path)
 
     for subdir in build_subdirs:
         # Do not process directory without meta-information file within it.
@@ -332,15 +331,45 @@ def do_flash(args):
 
         debuggers = targets[output_cfg['target']]['debuggers']
 
-        # Combine all binaries with their possible debuggers
+        # Combine all binaries inside builddir with their possible debuggers
         for bin in glob.glob(subdir + '/*.bin'):
             for dbg, dbg_cfg in debuggers.items():
                 binaries_info.append({ 'bin': bin, 'dbg': dbg, 'dbg_cfg': dbg_cfg })
 
+    # Do not include debug information.
     printable_info = [ [ item['bin'], item['dbg'] ] for item in binaries_info ]
 
-    print(binaries_info)
-    print(tabulate.tabulate(printable_info, tablefmt = 'fancy_grid', headers = ['Binary', 'Debugger']))
+    logger.info('found binaries:\n'
+        + tabulate.tabulate(printable_info, tablefmt = 'fancy_grid', showindex = "always",
+            headers = ['ID', 'Binary', 'Debugger']))
+
+    # No need to go any further if only listing is requested
+    if args.list_bin:
+        return
+
+    chosen_binary = {}
+
+    if len(binaries_info) > 1:
+        logger.info('more than one binary-debugger pair is found. Which ID you want to use?')
+        choice = int(input('ID of a binary? '))
+        chosen_binary = binaries_info[choice]
+    else:
+        chosen_binary = binaries_info[0]
+
+    logger.info(chosen_binary)
+
+    # TODO: implement at least 'st-link' support additionally
+    if chosen_binary['dbg'] != 'openocd':
+        logger.error('only OpenOCD debugger is supported so far')
+        exit(1)
+
+    openocd_cmd = [
+        'openocd -f {} -c \'init; reset halt; flash write_image erase {} {}; reset run; exit\''.format(
+            chosen_binary['dbg_cfg']['file'], chosen_binary['bin'], chosen_binary['dbg_cfg']['flash_address'])
+    ]
+
+    runenv_args = argparse.Namespace(command = openocd_cmd, sudo = args.sudo)
+    do_runenv(runenv_args)
 
 # Runs a command within theCore environment, optionally with sudo permission
 def do_runenv(args):
@@ -486,6 +515,8 @@ flash_parser.add_argument('-l', '--list-bin', action = 'store_true',
 flash_parser.add_argument('-d', '--debuggers', action = 'store_true',
     help = 'Use debugger to perform flash. By default the first supported debugger '
         + 'in meta.json is used')
+flash_parser.add_argument('-u', '--sudo', action = 'store_true',
+    help = 'Run flash command with root privileges using sudo.')
 
 flash_parser.set_defaults(handler = do_flash)
 
@@ -493,7 +524,7 @@ flash_parser.set_defaults(handler = do_flash)
 
 runenv_parser = subparsers.add_parser('runenv',
     help = 'Run arbitrary command inside theCore environment')
-runenv_parser.add_argument('-s', '--sudo', action = 'store_true',
+runenv_parser.add_argument('-u', '--sudo', action = 'store_true',
     help = 'Run command with root privileges using sudo.')
 runenv_parser.add_argument('command', nargs='+',
     help = 'Command to execute.')
