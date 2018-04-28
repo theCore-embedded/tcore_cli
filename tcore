@@ -20,13 +20,14 @@ CORE_INSTALL_DIR        = os.path.expanduser('~/.theCore/')
 CORE_SRC_DIR            = CORE_INSTALL_DIR + 'theCore/'
 CORE_TOOLCHAIN_DIR      = CORE_SRC_DIR + 'toolchains/'
 CORE_INSTALLFILE        = CORE_INSTALL_DIR + 'installfile.json'
+# TODO: add ability to globally specify theCore remote (not only upstream)
 CORE_UPSTREAM           = 'https://github.com/forGGe/theCore'
 CORE_THIRDPARTY_DIR     = CORE_INSTALL_DIR + 'thirdparties'
 NIX_DIR                 = '/nix'
 NIX_INSTALL_SCRIPT      = '/tmp/nix_install.sh'
 NIX_SOURCE_FILE         = os.path.expanduser('~/.nix-profile/etc/profile.d/nix.sh')
 CURRENT_RUNNING_DIR     = os.getcwd()
-VERSION                 = '0.0.1'
+VERSION                 = '0.0.3'
 
 # ------------------------------------------------------------------------------
 # Logging
@@ -58,6 +59,10 @@ def run_with_nix(cmd):
 def run_with_nix_shell(cmd):
     run_with_nix('nix-shell --run \"{}\" {}'.format(cmd, CORE_SRC_DIR))
 
+# Returns True if theCore is installed
+def theCore_installed():
+    return os.path.isfile(CORE_INSTALLFILE)
+
 # ------------------------------------------------------------------------------
 # Commands
 
@@ -86,21 +91,22 @@ def do_bootstrap(args):
 
     # Check if theCore is downloaded
 
-    if os.path.isfile(CORE_INSTALLFILE) and not args.force:
+    if theCore_installed() and not args.force:
         logger.info('theCore is already downloaded')
     else:
         if os.path.isdir(CORE_SRC_DIR):
             logger.info('remove old theCore files')
             shutil.rmtree(CORE_SRC_DIR)
 
-        if os.path.isfile(CORE_INSTALLFILE):
+        if theCore_installed():
             logger.info('remove theCore installfile')
             os.remove(CORE_INSTALLFILE)
 
         logger.info('downloading theCore')
         os.makedirs(CORE_SRC_DIR)
         run_with_nix('nix-env -i git')
-        run_with_nix('git clone {} {}'.format(CORE_UPSTREAM, CORE_SRC_DIR))
+        # Upstream name is way better name for such theCore installation
+        run_with_nix('git clone {} {} -o upstream'.format(CORE_UPSTREAM, CORE_SRC_DIR))
         run_with_nix('cd {} && git submodule update --init --recursive'.format(CORE_SRC_DIR))
 
         # Initial install file contents
@@ -116,6 +122,11 @@ def do_bootstrap(args):
 
 # Initializes empty project, or downloads existing one using Git.
 def do_init(args):
+    if not theCore_installed():
+        logger.error('theCore is not installed in {}. Forgot to run `bootstrap`?'
+            .format(CORE_INSTALL_DIR))
+        exit(1)
+
     if not args.remote:
         logger.error('initializing an empty project is not yet implemented, use remote option')
         exit(1)
@@ -127,12 +138,32 @@ def do_init(args):
 
     run_with_nix('git clone {} {}'.format(args.remote, out_dir))
 
+# Change theCore revision globally
+def do_fetch(args):
+    if not theCore_installed():
+        logger.error('theCore is not installed in {} Forgot to run `bootstrap`?'
+            .format(CORE_INSTALL_DIR))
+        exit(1)
+
+    run_with_nix('cd {} && git fetch {} {} && git checkout -q FETCH_HEAD'
+        .format(CORE_SRC_DIR, args.remote, args.ref))
+
 # Deletes Nix and theCore
 def do_purge(args):
-    logger.error('Not implemented yet!')
+    if not theCore_installed():
+        logger.error('theCore is not installed in {} Nothing to purge'
+            .format(CORE_INSTALL_DIR))
+        exit(1)
+
+    logger.error('not implemented yet!')
 
 # Compiles project specified in arguments
 def do_compile(args):
+    if not theCore_installed():
+        logger.error('theCore is not installed in {} Forgot to run `bootstrap`?'
+            .format(CORE_INSTALL_DIR))
+        exit(1)
+
     src_dir = os.path.normpath(args.source)
     metafile = src_dir + '/meta.json'
 
@@ -286,6 +317,70 @@ init_parser.add_argument('-r', '--remote', type = str,
 init_parser.add_argument('-o', '--outdir', type = str,
     help = 'Output directory to place a project in')
 init_parser.set_defaults(handler = do_init)
+
+# Fetch subcommand
+
+fetch_parser = subparsers.add_parser('fetch',
+    help = 'Fetches given theCore revision, globally changing its state. '
+        + 'Such change will be visible for every theCore-based project '
+        + 'of current user')
+fetch_parser.add_argument('-r', '--remote', type = str,
+    help = 'Git remote to fetch theCore, defaults to `upstream`', default = 'upstream')
+fetch_parser.add_argument('-e', '--ref', type = str,
+    help = 'Optional Git reference: commit id, branch or tag. '
+        + 'If not given, `develop` branch will be used.', default = 'develop')
+fetch_parser.set_defaults(handler = do_fetch)
+
+# TODO: implement theCore local mode
+#
+# Ideally, theCore revision should be checkout'ed  using `git worktree`
+# mechanism.
+#
+# meta.json must be updated to reflect that (few JSON fields must be added, as follows):
+#
+#   - core_remote must contain remote from where theCore were fetched
+#   - core_rev must contain desired theCore revision
+#   - core_path must contain theCore path
+#
+# Later, when `init` subcommand is executed to download a project with
+# such meta.json file, it must:
+#
+#   1. fetch revision from remote found in meta.json
+#   2. place that revision in the directory found in meta.json
+#
+# Still, following questions remain open:
+#
+#   - what if global theCore is deleted, how those worktrees will behave?
+#   - how to resolve collision in thirdparty remotes, when different theCore
+#     revisions may have different remotes for single thirdparty?
+#   - what if local theCore copy is changed, should buildsystem detect it
+#     and change a revision back?
+#   - how to revert local theCore changes, if something go wrong? another
+#     command, like `refresh` ? or additional switch for `fetch`? or plain
+#     `git` approach?
+#   - what if project wants to return to the global mode again?
+# `
+
+# Local mode (and aux) switches:
+
+# Globally changes theCore revision. Change will be visible for every project,
+# based on theCore.
+#
+#  fetch_parser.add_argument('-g', '--global', action = 'store_true',
+#     help = 'Global mode - changes global theCore revision')
+
+# Path to a project source code. meta.json must be present there.
+#
+# fetch_parser.add_argument('-s', '--source', type = str,
+#     help = 'Path to the project source code. Defaults to current working directory. '
+#         + 'Meaningless in global mode (-g/--global switch).',
+#     default = os.getcwd())
+
+# Output directory to place theCore revision in.
+#
+# fetch_parser.add_argument('-o', '--outdir', type = str,
+#     help = 'Optional output directory to place a theCore in, defaults to '
+#         + '`<project_dir>/theCore`. Meaningless in global mode (-g/--global switch).')
 
 # Compile subcommand
 
