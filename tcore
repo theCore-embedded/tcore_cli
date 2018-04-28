@@ -387,6 +387,9 @@ def do_runenv(args):
 # ------------------------------------------------------------------------------
 # Command line parsing
 
+# For nice subparsers help handling
+subparsers_list = []
+
 parser = argparse.ArgumentParser(description = 'theCore framework CLI')
 subparsers = parser.add_subparsers(help = 'theCore subcommands')
 
@@ -398,9 +401,15 @@ bootstrap_parser.add_argument('-f', '--force', action = 'store_true',
     help = 'Force (re)install theCore dev environment')
 bootstrap_parser.set_defaults(handler = do_bootstrap)
 
+subparsers_list.append(bootstrap_parser)
+
+# Purge parser
+
 purge_parser = subparsers.add_parser('purge',
     help = 'Deletes theCore development environment')
 purge_parser.set_defaults(handler = do_purge)
+
+subparsers_list.append(purge_parser)
 
 # Init subcommand
 
@@ -411,6 +420,8 @@ init_parser.add_argument('-r', '--remote', type = str,
 init_parser.add_argument('-o', '--outdir', type = str,
     help = 'Output directory to place a project in')
 init_parser.set_defaults(handler = do_init)
+
+subparsers_list.append(init_parser)
 
 # Fetch subcommand
 
@@ -424,6 +435,8 @@ fetch_parser.add_argument('-e', '--ref', type = str,
     help = 'Optional Git reference: commit id, branch or tag. '
         + 'If not given, `develop` branch will be used.', default = 'develop')
 fetch_parser.set_defaults(handler = do_fetch)
+
+subparsers_list.append(fetch_parser)
 
 # TODO: implement theCore local mode
 #
@@ -500,6 +513,8 @@ compile_parser.add_argument('-c', '--clean', action = 'store_true',
     help = 'Clean build')
 compile_parser.set_defaults(handler = do_compile)
 
+subparsers_list.append(compile_parser)
+
 # Flash subcommand
 
 flash_parser = subparsers.add_parser('flash',
@@ -520,6 +535,8 @@ flash_parser.add_argument('-u', '--sudo', action = 'store_true',
 
 flash_parser.set_defaults(handler = do_flash)
 
+subparsers_list.append(flash_parser)
+
 # Runenv subcommand
 
 runenv_parser = subparsers.add_parser('runenv',
@@ -530,6 +547,10 @@ runenv_parser.add_argument('command', nargs='+',
     help = 'Command to execute.')
 runenv_parser.set_defaults(handler = do_runenv)
 
+subparsers_list.append(runenv_parser)
+
+#-------------------------------------------------------------------------------
+
 args = parser.parse_args()
 
 if hasattr(args, 'handler') and args.handler:
@@ -537,3 +558,8 @@ if hasattr(args, 'handler') and args.handler:
 else:
     logger.error('no operation given')
     parser.print_help()
+
+    # Subparser help is not printed by default
+    for subparser in subparsers_list:
+        print('\n\nSubcommand:')
+        subparser.print_help()
