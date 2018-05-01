@@ -5,56 +5,83 @@ Usage:
 
 ::
 
-    usage: tcore [-h] {bootstrap,purge,init,compile,runenv} ...
+    usage: tcore [-h] {bootstrap,purge,init,fetch,compile,flash,runenv} ...
 
     theCore framework CLI
 
     positional arguments:
-    {bootstrap,purge,init,compile,runenv}
+      {bootstrap,purge,init,fetch,compile,flash,runenv}
                             theCore subcommands
         bootstrap           Installs theCore development environment
         purge               Deletes theCore development environment
         init                Initialize project based on theCore
+        fetch               Fetches given theCore revision, globally changing its
+                            state. Such change will be visible for every theCore-
+                            based project of current user
         compile             Build project
+        flash               flash project on the target
         runenv              Run arbitrary command inside theCore environment
 
     optional arguments:
-    -h, --help            show this help message and exit
-
+      -h, --help            show this help message and exit
 
 Boostrap theCore
 ----------------
 
-To install theCore and all the dependencies, use ``bootstrap`` subcommand::
+::
 
     usage: tcore bootstrap [-h] [-f]
 
     optional arguments:
-    -h, --help   show this help message and exit
-    -f, --force  Force (re)install theCore dev environment
+      -h, --help   show this help message and exit
+      -f, --force  Force (re)install theCore dev environment
+
+Purge theCore
+-------------
+
+::
+
+    usage: tcore purge [-h]
+
+    optional arguments:
+      -h, --help  show this help message and exit
+
+Fetch theCore
+-------------
+
+::
+
+   usage: tcore fetch [-h] [-r REMOTE] [-e REF]
+
+   optional arguments:
+     -h, --help            show this help message and exit
+     -r REMOTE, --remote REMOTE
+                           Git remote to fetch theCore, defaults to `upstream`
+     -e REF, --ref REF     Optional Git reference: commit id, branch or tag. If
+                           not given, `develop` branch will be used.
 
 Initialize project
 ------------------
 
-New project can be downloaded or initialized using following commands::
+::
 
     usage: tcore init [-h] [-r REMOTE] [-o OUTDIR]
 
     optional arguments:
-    -h, --help            show this help message and exit
-    -r REMOTE, --remote REMOTE
+      -h, --help            show this help message and exit
+      -r REMOTE, --remote REMOTE
                             Git remote to download project from
-    -o OUTDIR, --outdir OUTDIR
+      -o OUTDIR, --outdir OUTDIR
                             Output directory to place a project in
 
 Compile project
 ---------------
 
-If created, embedded project can be compiled using ``compile`` command::
+::
 
     usage: tcore compile [-h] [-s SOURCE] [-b BUILDDIR]
                          [--buildtype {debug,release,min_size,none}] [-t TARGET]
-                         [-l] [-c]
+                         [-j JOBS] [-l] [-c]
 
     optional arguments:
       -h, --help            show this help message and exit
@@ -70,14 +97,37 @@ If created, embedded project can be compiled using ``compile`` command::
                             Build type. Default is none
       -t TARGET, --target TARGET
                             Target name to compile for
+      -j JOBS, --jobs JOBS  Specifies the number of `make` jobs (commands) to run
+                            simultaneously. Default is 1.
       -l, --list-targets    List supported targets
       -c, --clean           Clean build
 
+Flash binary
+------------
+
+::
+
+    usage: tcore flash [-h] [-s SOURCE] [-b BUILDDIR] [-l] [-d] [-u]
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      -s SOURCE, --source SOURCE
+                            Path to the source code. Defaults to current
+                            directory.
+      -b BUILDDIR, --builddir BUILDDIR
+                            Explicit path to the build directory where binary
+                            files are placed. By default the `build` directory and
+                            subdirectories are scanned for binaries.
+      -l, --list-bin        List built binaries and avaliable debuggers to perform
+                            flash operation
+      -d, --debuggers       Use debugger to perform flash. By default the first
+                            supported debugger in meta.json is used
+      -u, --sudo            Run flash command with root privileges using sudo.
 
 Run custom command within theCore environment
 ---------------------------------------------
 
-Arbitrary command can be executed with ``runenv`` subcommand::
+::
 
     usage: tcore runenv [-h] [-s] command [command ...]
 
