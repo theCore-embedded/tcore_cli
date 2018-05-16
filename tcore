@@ -218,9 +218,8 @@ def do_compile(args):
         if args.buildtype != 'none':
             build_dir = build_dir + '-' + args.buildtype
 
-    # If special flag is set, build treated as host-oriented. No toolchain is
-    # required
-    host_build = 'host' in target_cfg and not target_cfg['host']
+    # Check if build is host-oriented. No toolchain is required in that case.
+    host_build = args.target == 'host'
 
     if not host_build:
         if os.path.isfile(src_dir + '/' + target_cfg['toolchain']):
