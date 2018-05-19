@@ -311,10 +311,9 @@ def do_flash(args):
     if args.builddir:
         build_subdirs.append(args.builddir)
     else:
-        with os.scandir(builds_dir) as it:
-            for entry in it:
-                if entry.is_dir():
-                    build_subdirs.append(entry.path)
+        for entry in os.scandir(builds_dir):
+            if entry.is_dir():
+                build_subdirs.append(entry.path)
 
     for subdir in build_subdirs:
         # Do not process directory without meta-information file within it.
