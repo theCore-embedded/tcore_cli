@@ -50,9 +50,8 @@ params_json=json.loads('''{
                 "long_description": "The clock can be configured for STM32F4 device only"
             },
 
-            "config-uart": {
-                "type": "table",
-                "description": "UART configuration",
+            "table-uart": {
+                "description": "UART configuration table",
                 "key": "config-channel",
                 "items": {
                     "config-channel": {
@@ -109,7 +108,6 @@ class engine:
     def __init__(self, ui_instance):
         self.ui_instance = ui_instance
         self.items_data = {}
-        self.table_items_data = {}
         self.config_params = params_json
         self.output_cfg = cfg_json
 
@@ -120,56 +118,101 @@ class engine:
         self.process_menu(None, root_menu_id, self.config_params, self.output_cfg)
 
     def on_config_change(self, menu_id, id, **kwargs):
-        if id in self.table_items_data:
-            # TODO
-            return
+        if id in self.items_data:
 
-        for k, v in self.items_data.items():
-            if k == id and v['item_type'] == 'config' and menu_id == v['menu']:
-                # Store value
+            p_menu = self.items_data[menu_id]['p_menu']
+            menu_params = self.items_data[menu_id]['data']
+            normalized_name = self.items_data[menu_id]['name']
+            output_obj = self.items_data[menu_id]['container'][normalized_name]
+            v = self.items_data[id]
+
+            if menu_id == v['menu']:
                 normalized_cfg_name = v['name']
-                v['container'][normalized_cfg_name] = kwargs['value']
-                break
 
-        # Re-calculate and update menu accordingly
+                if v['item_type'] == 'config':
+                    v['container'][normalized_cfg_name] = kwargs['value']
+                elif v['item_type'] == 'selector':
+                    # Create pseudo-menu for every value selected
+                    # (could be one or more)
 
-        p_menu = self.items_data[menu_id]['p_menu']
-        menu_params = self.items_data[menu_id]['data']
-        normalized_name = self.items_data[menu_id]['name']
-        output_obj = self.items_data[menu_id]['container'][normalized_name]
+                    values = kwargs['value']
+                    if not isinstance(values, list):
+                        values = [ values ]
 
-        self.process_menu(p_menu, menu_id, menu_params, output_obj)
+                    for val in values:
+                        pseudo_name = 'menu-' + val
+                        pseudo_data = {
+                            'description': val + ' configuration'
+                        }
+                        new_menu_id = '{}/{}-pseudo/'.format(menu_id, pseudo_name)
 
-    def process_table_config(self, p_menu_id, menu_id, cfg_id, cfg_data, output_obj):
-        key_cfg_name = cfg_data['key']
-        table_items = cfg_data['items']
+                        if pseudo_name in menu_params:
+                            # Already created
+                            continue
 
-        # Add key configuration in the first place
+                        # Inject rest of the configuration data
+                        pseudo_data.update(menu_params[normalized_cfg_name]['items'])
+                        # Delete duplicated key item. It resides both "outside"
+                        # and "inside". Delete from "inside"
+                        key_item = menu_params[normalized_cfg_name]['key']
+                        pseudo_data.pop(key_item, None)
 
-        key = table_items[key_cfg_name]
-        new_key_config_id = menu_id + '/' + cfg_id + '-key'
+                        # Inject pseudo-menus
+                        menu_params[pseudo_name] = pseudo_data
 
-        self.table_items_data[new_key_config_id] = {
-            'name':      cfg_id,
-            'data':      cfg_data,
-            'p_menu':    p_menu_id,
-            'menu':      menu_id,
-            'container': output_obj,
-            'key':       True
+                        # Replace output object and create pseudo menus
+                        # BEFORE real menus will be processed.
+                        # This will ensure pseudo menu data is customized
+                        # as we want it.
+
+                        # Use selector's container as new menu parent container
+                        v['container'][normalized_cfg_name][pseudo_name] = {}
+
+                        self.ui_instance.create_menu(menu_id, new_menu_id,
+                            description=pseudo_data['description'])
+
+                        self.items_data[new_menu_id] = {
+                            'item_type': 'menu',
+                            'name': pseudo_name,
+                            'data': pseudo_data,
+                            'p_menu': menu_id,
+                            'container': v['container'][normalized_cfg_name]
+                        }
+
+                        self.process_menu(menu_id, new_menu_id, pseudo_data, v['container'][normalized_cfg_name])
+
+                # Re-calculate and update menu accordingly
+
+                self.process_menu(p_menu, menu_id, menu_params, output_obj)
+
+    def handle_config_creation(self, p_menu_id, menu_id, new_cfg_id, name, data, item_type, container):
+
+        self.items_data[new_cfg_id] = {
+            'item_type': item_type,
+            'name': name,
+            'data': data,
+            'p_menu': p_menu_id,
+            'menu': menu_id,
+            'container': container
         }
 
-        if key['type'] == 'enum':
+        type = data['type']
+
+        if type == 'enum':
+            # Single choice or multi-choice enum
             single = True
-            if 'single' in key:
-                single = key['single']
+            if 'single' in data:
+                single = data['single']
 
-            self.ui_instance.create_config(menu_id, new_key_config_id,
-                'enum', description=key['description'],
-                values=key['values'], single=single)
-        else:
-            return
-
-        return
+            self.ui_instance.create_config(menu_id, new_cfg_id,
+                'enum', description=data['description'],
+                values=data['values'], single=single)
+        elif type == 'integer':
+            self.ui_instance.create_config(menu_id, new_cfg_id,
+                'integer', description=data['description'])
+        elif type == 'string':
+            self.ui_instance.create_config(menu_id, new_cfg_id,
+                'string', description=data['description'])
 
     # Processes menu, creating and deleting configurations when needed
     def process_menu(self, p_menu_id, menu_id, menu_params, output_obj):
@@ -182,7 +225,7 @@ class engine:
             return False
 
         for k, v in menu_params.items():
-            if not k.startswith('config-') and not k.startswith('menu-'):
+            if not k.startswith('config-') and not k.startswith('menu-') and not k.startswith('table-'):
                 continue # Skip not interested fields
 
             # Possible ways to handle items
@@ -230,41 +273,15 @@ class engine:
                 # Create, skip, delete config
 
                 if decision == create_item:
-                    type = v['type']
-
                     # Initialize empty config, later UI will publish
                     # changes to it
                     output_obj[k] = {}
 
-                    # Special table type of configuration requires more handling
-                    if type == 'table':
-                        self.process_table_config(p_menu_id, menu_id, k, v, output_obj)
-                        continue
-
                     # No backslash at the end means it is a config
                     new_config_id = menu_id + '/' + k
 
-                    self.items_data[new_config_id] = {
-                        'item_type': 'config',
-                        'name': k,
-                        'data': v,
-                        'p_menu': p_menu_id,
-                        'menu': menu_id,
-                        'container': output_obj
-                    }
-
-                    if type == 'enum':
-                        # Single choice or multi-choice enum
-                        single = True
-                        if 'single' in v:
-                            single = v['single']
-
-                        self.ui_instance.create_config(menu_id, new_config_id,
-                            'enum', description=v['description'],
-                            values=v['values'], single=single)
-                    elif type == 'integer':
-                        self.ui_instance.create_config(menu_id, new_config_id,
-                            'integer', description=v['description'])
+                    self.handle_config_creation(p_menu_id, menu_id, new_config_id,
+                        k, v, 'config', output_obj)
 
                 elif decision == delete_item:
                     # Configuration must be deleted, if present.
@@ -274,6 +291,19 @@ class engine:
 
                 elif decision == skip_item:
                     pass # Nothing to do
+            elif k.startswith('table-'):
+                if decision == create_item:
+                    # Configuration that in fact acts as a key selector
+                    key = v['key']
+                    key_data = v['items'][key]
+                    new_selector_id = '{}/{}-selector'.format(menu_id, k)
+
+                    # Prepare configuration object. Selector will not push there
+                    # any data. Instead, child menus will.
+                    output_obj[k] = {}
+
+                    self.handle_config_creation(p_menu_id, menu_id, new_selector_id,
+                            k, key_data, 'selector', output_obj)
 
             elif k.startswith('menu-'):
                 # Create, skip, delete menu
