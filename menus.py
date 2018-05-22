@@ -57,17 +57,22 @@ params_json=json.loads('''{
                 "items": {
                     "config-channel": {
                         "type": "enum",
-                        "values": [ "UART0", "UART1", "UART2" ]
+                        "values": [ "UART0", "UART1", "UART2" ],
+                        "description": "Desired UART",
+                        "single": false
                     },
                     "config-baud": {
                         "type": "integer",
-                        "default": 115200
+                        "default": 115200,
+                        "description": "UART baud rate"
                     },
                     "config-alias": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "UART driver C++ alias"
                     },
                     "config-comment": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "UART driver C++ comment"
                     }
                 }
             }
@@ -104,6 +109,7 @@ class engine:
     def __init__(self, ui_instance):
         self.ui_instance = ui_instance
         self.items_data = {}
+        self.table_items_data = {}
         self.config_params = params_json
         self.output_cfg = cfg_json
 
@@ -114,6 +120,10 @@ class engine:
         self.process_menu(None, root_menu_id, self.config_params, self.output_cfg)
 
     def on_config_change(self, menu_id, id, **kwargs):
+        if id in self.table_items_data:
+            # TODO
+            return
+
         for k, v in self.items_data.items():
             if k == id and v['item_type'] == 'config' and menu_id == v['menu']:
                 # Store value
@@ -129,6 +139,36 @@ class engine:
         output_obj = self.items_data[menu_id]['container'][normalized_name]
 
         self.process_menu(p_menu, menu_id, menu_params, output_obj)
+
+    def process_table_config(self, p_menu_id, menu_id, cfg_id, cfg_data, output_obj):
+        key_cfg_name = cfg_data['key']
+        table_items = cfg_data['items']
+
+        # Add key configuration in the first place
+
+        key = table_items[key_cfg_name]
+        new_key_config_id = menu_id + '/' + cfg_id + '-key'
+
+        self.table_items_data[new_key_config_id] = {
+            'name':      cfg_id,
+            'data':      cfg_data,
+            'p_menu':    p_menu_id,
+            'menu':      menu_id,
+            'container': output_obj,
+            'key':       True
+        }
+
+        if key['type'] == 'enum':
+            single = True
+            if 'single' in key:
+                single = key['single']
+
+            self.ui_instance.create_config(menu_id, new_key_config_id,
+                'enum', description=key['description'],
+                values=key['values'], single=single)
+        else:
+            return
+
         return
 
     # Processes menu, creating and deleting configurations when needed
@@ -196,6 +236,11 @@ class engine:
                     # changes to it
                     output_obj[k] = {}
 
+                    # Special table type of configuration requires more handling
+                    if type == 'table':
+                        self.process_table_config(p_menu_id, menu_id, k, v, output_obj)
+                        continue
+
                     # No backslash at the end means it is a config
                     new_config_id = menu_id + '/' + k
 
@@ -209,9 +254,14 @@ class engine:
                     }
 
                     if type == 'enum':
+                        # Single choice or multi-choice enum
+                        single = True
+                        if 'single' in v:
+                            single = v['single']
+
                         self.ui_instance.create_config(menu_id, new_config_id,
                             'enum', description=v['description'],
-                            values=v['values'])
+                            values=v['values'], single=single)
                     elif type == 'integer':
                         self.ui_instance.create_config(menu_id, new_config_id,
                             'integer', description=v['description'])
@@ -388,8 +438,14 @@ class npyscreen_ui(abstract_ui):
         }
 
         if type == 'enum':
-            self.menu_forms[menu_id]['config_fields'][id]['option'] = \
-                npyscreen.OptionSingleChoice(description, choices=kwargs['values'])
+            if kwargs['single']:
+                self.menu_forms[menu_id]['config_fields'][id]['single'] = True
+                self.menu_forms[menu_id]['config_fields'][id]['option'] = \
+                    npyscreen.OptionSingleChoice(description, choices=kwargs['values'])
+            else:
+                self.menu_forms[menu_id]['config_fields'][id]['single'] = False
+                self.menu_forms[menu_id]['config_fields'][id]['option'] = \
+                    npyscreen.OptionMultiChoice(description, choices=kwargs['values'])
         else:
             self.menu_forms[menu_id]['config_fields'][id]['option'] = \
                 npyscreen.OptionFreeText(description)
@@ -430,8 +486,9 @@ class npyscreen_ui(abstract_ui):
                 # Report one config at a time
                 value=data['option'].value
                 if data['type'] == 'enum':
-                    # Normalize a value
-                    value=value[0]
+                    if data['single']:
+                        # Normalize a value
+                        value=value[0]
                 self.engine.on_config_change(f_id, id, value=value)
                 return
 
