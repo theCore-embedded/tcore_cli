@@ -8,111 +8,6 @@ import sys
 import abc
 import copy
 
-'''
-        "config-simple": {
-            "type": "enum",
-            "description": "Simple test config",
-            "values-selector": "core-devices"
-        }
-'''
-
-params_json=json.loads('''{
-    "menu-platform": {
-        "description": "Platform configuration menu",
-
-        "config-name": {
-            "description": "Desired platform",
-            "type": "enum",
-            "values": ["host", "stm32"]
-        },
-
-        "table-drivers": {
-            "description": "Drivers to use",
-            "key": "config-name",
-            "value-classes": [ "core-devices", "test-class" ],
-            "items": {
-                "config-name": {
-                    "type": "enum",
-                    "values": [ "dev0", "dev1", "dev2" ],
-                    "description": "Device name",
-                    "single": false
-                },
-                "config-alias": {
-                    "type": "string",
-                    "description": "Device driver C++ alias"
-                },
-                "config-comment": {
-                    "type": "string",
-                    "description": "Device driver C++ comment"
-                }
-            }
-        },
-
-        "menu-stm32": {
-            "description": "STM32 configuration menu",
-
-            "depends_on": "/menu-platform/config-name == 'stm32'",
-
-            "config-device": {
-                "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device1"
-            },
-            "config-device2": {
-                "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device2"
-            },
-            "config-device3": {
-                "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device3"
-            },
-            "config-device44": {
-                "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device4"
-            },
-
-            "config-clock": {
-                "type": "integer",
-                "depends_on": "/menu-platform/menu-stm32/config-device == 'STM32F4'",
-                "description": "Desired clock",
-                "long_description": "The clock can be configured for STM32F4 device only"
-            },
-
-            "table-uart": {
-                "description": "UART configuration table",
-                "key": "config-channel",
-                "items": {
-                    "config-channel": {
-                        "type": "enum",
-                        "values": [ "UART0", "UART1", "UART2" ],
-                        "description": "Desired UART",
-                        "single": false
-                    },
-                    "config-baud": {
-                        "type": "enum",
-                        "default": 115200,
-                        "values": [ 115200, 9600 ],
-                        "description": "UART baud rate"
-                    },
-                    "config-alias": {
-                        "type": "string",
-                        "description": "UART driver C++ alias"
-                    },
-                    "config-comment": {
-                        "type": "string",
-                        "description": "UART driver C++ comment"
-                    }
-                }
-            }
-        }
-    }
-}''')
-
-cfg_json={}
-
 #-------------------------------------------------------------------------------
 
 class abstract_ui(abc.ABC):
@@ -137,14 +32,13 @@ class abstract_ui(abc.ABC):
         pass
 
 class engine:
-    def __init__(self, ui_instance):
+    def __init__(self, ui_instance, config_params, output_cfg = {}):
         self.ui_instance = ui_instance
         self.items_data = {}
-        self.config_params = params_json
-        self.output_cfg = cfg_json
+        self.config_params = config_params
+        self.output_cfg = output_cfg
 
-        # Root form must be named as 'MAIN'
-        root_menu_id = 'MAIN'
+        root_menu_id = '/'
         self.ui_instance.set_engine(self)
         self.ui_instance.create_menu(None, root_menu_id, 'Welcome to theCore configurator')
         self.process_menu(None, root_menu_id, self.config_params, self.output_cfg)
@@ -172,6 +66,7 @@ class engine:
 
                 self.process_menu(p_menu, menu_id, menu_params, output_obj)
 
+    # Manages configurations grouped in tables
     def handle_table_configurations(self, new_keys, menu_id, selector_data, menu_params, src_cfg_name):
         # Create pseudo-menu for every value selected
         # (could be one or more)
@@ -244,6 +139,7 @@ class engine:
             self.process_menu(menu_id, new_menu_id, pseudo_data,
                 selector_data['container'][src_cfg_name][pseudo_name])
 
+    # Creates configuration
     def handle_config_creation(self, p_menu_id, menu_id, new_cfg_id, name, data, item_type, container):
 
         self.items_data[new_cfg_id] = {
@@ -266,9 +162,18 @@ class engine:
             if 'single' in data:
                 single = data['single']
 
+            # Values for this configuration can be provided from elsewhere
+            values = []
+            if 'values-selector' in data:
+                selector = data['values-selector']
+                values = [ item for item in self.items_data.items() \
+                    if 'value-classes' in item and selector in item['value-classes'] ]
+            else:
+                values = data['values']
+
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'enum', description=data['description'],
-                values=data['values'], single=single)
+                values=values, single=single)
         elif type == 'integer':
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'integer', description=data['description'])
@@ -282,6 +187,10 @@ class engine:
         def is_created(name, data):
             # If no ID is assigned - no config/menu is created yet
             return 'internal_id' in data
+
+        # Internal helper to check if output object was created or not
+        def is_output_created(name, data):
+            return name in output_obj
 
         for k, v in menu_params.items():
             if not k.startswith('config-') and not k.startswith('menu-') and not k.startswith('table-'):
@@ -466,6 +375,11 @@ class npyscreen_multiline(npyscreen.MultiLineAction):
     def actionHighlighted(self, act_on_this, key_press):
         self.ui.on_item_selected(self.f_id, act_on_this)
 
+class npyscreen_mainscreen(npyscreen.ActionFormV2WithMenus):
+    def create(self):
+        pass
+
+
 class npyscreen_form(npyscreen.ActionFormV2WithMenus):
     def __init__(self, *args, **kwargs):
         self.my_f_id = kwargs['my_f_id']
@@ -479,16 +393,43 @@ class npyscreen_form(npyscreen.ActionFormV2WithMenus):
     def adjust_widgets(self, *args, **keywords):
         self.ui.check_widgets(self.my_f_id)
 
+    def on_ok(self):
+        out = self.ui.engine.get_output()
+        f = open('output.json', 'w')
+        json.dump(out, f, indent=4)
+        exit(0)
+
 class npyscreen_ui(abstract_ui):
     def __init__(self, npyscreen_app):
         self.menu_forms = {}
         self.npyscreen_app = npyscreen_app
         self.engine = None
 
+        # First form to select existing configuration
+        f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Main form')
+        fs = f.add(npyscreen.TitleFilenameCombo, name="Select existing theCore configuration")
+        f.edit()
+
+        self.create_menu(None, 'MAIN', 'Hello, World')
+
+        existing_cfg = None
+
+        if fs.value:
+            existing_cfg = json.load(open(fs.value, 'r'))
+
+        fl = open('src.json', 'r')
+        src = json.load(fl)
+        self.engine = engine(self, src, existing_cfg)
+
     def set_engine(self, engine):
         self.engine = engine
 
     def create_menu(self, p_menu_id, menu_id, description, long_description=None):
+        # If form name is not MAIN and parent ID is not set,
+        # then engine trying to create top-level menu.
+        if p_menu_id == None and menu_id != 'MAIN':
+            p_menu_id= 'MAIN'
+
         f = self.npyscreen_app.addForm(menu_id, npyscreen_form,
             name=description, my_f_id=menu_id, ui=self)
 
@@ -611,7 +552,6 @@ class npyscreen_ui(abstract_ui):
 class theCoreConfiguratorApp(npyscreen.NPSAppManaged):
     def onStart(self):
         self.ui = npyscreen_ui(self)
-        self.engine = engine(self.ui)
 
 #-------------------------------------------------------------------------------
 

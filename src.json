@@ -1,0 +1,94 @@
+{
+    "menu-platform": {
+        "description": "Platform configuration menu",
+
+        "config-name": {
+            "description": "Desired platform",
+            "type": "enum",
+            "values": ["host", "stm32"]
+        },
+
+        "table-drivers": {
+            "description": "Drivers to use",
+            "key": "config-name",
+            "value-classes": [ "core-devices", "test-class" ],
+            "items": {
+                "config-name": {
+                    "type": "enum",
+                    "values": [ "dev0", "dev1", "dev2" ],
+                    "description": "Device name",
+                    "single": false
+                },
+                "config-alias": {
+                    "type": "string",
+                    "description": "Device driver C++ alias"
+                },
+                "config-comment": {
+                    "type": "string",
+                    "description": "Device driver C++ comment"
+                }
+            }
+        },
+
+        "menu-stm32": {
+            "description": "STM32 configuration menu",
+
+            "depends_on": "/menu-platform/config-name == 'stm32'",
+
+            "config-device": {
+                "type": "enum",
+                "values": ["STM32F4", "STM32L4"],
+                "description": "Desired device1"
+            },
+            "config-device2": {
+                "type": "enum",
+                "values": ["STM32F4", "STM32L4"],
+                "description": "Desired device2"
+            },
+            "config-device3": {
+                "type": "enum",
+                "values": ["STM32F4", "STM32L4"],
+                "description": "Desired device3"
+            },
+            "config-device44": {
+                "type": "enum",
+                "values": ["STM32F4", "STM32L4"],
+                "description": "Desired device4"
+            },
+
+            "config-clock": {
+                "type": "integer",
+                "depends_on": "/menu-platform/menu-stm32/config-device == 'STM32F4'",
+                "description": "Desired clock",
+                "long_description": "The clock can be configured for STM32F4 device only"
+            },
+
+            "table-uart": {
+                "description": "UART configuration table",
+                "key": "config-channel",
+                "items": {
+                    "config-channel": {
+                        "type": "enum",
+                        "values": [ "UART0", "UART1", "UART2" ],
+                        "description": "Desired UART",
+                        "single": false
+                    },
+                    "config-baud": {
+                        "type": "enum",
+                        "default": 115200,
+                        "values": [ 115200, 9600 ],
+                        "description": "UART baud rate"
+                    },
+                    "config-alias": {
+                        "type": "string",
+                        "description": "UART driver C++ alias"
+                    },
+                    "config-comment": {
+                        "type": "string",
+                        "description": "UART driver C++ comment"
+                    }
+                }
+            }
+        }
+    }
+}
