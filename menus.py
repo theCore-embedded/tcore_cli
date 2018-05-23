@@ -140,7 +140,7 @@ class engine:
                 selector_data['container'][src_cfg_name][pseudo_name])
 
     # Creates configuration
-    def handle_config_creation(self, p_menu_id, menu_id, new_cfg_id, name, data, item_type, container):
+    def handle_config_creation(self, p_menu_id, menu_id, new_cfg_id, name, data, item_type, container, selected):
 
         self.items_data[new_cfg_id] = {
             'item_type': item_type,
@@ -173,13 +173,13 @@ class engine:
 
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'enum', description=data['description'],
-                values=values, single=single)
+                values=values, single=single, selected=selected)
         elif type == 'integer':
             self.ui_instance.create_config(menu_id, new_cfg_id,
-                'integer', description=data['description'])
+                'integer', description=data['description'], selected=selected)
         elif type == 'string':
             self.ui_instance.create_config(menu_id, new_cfg_id,
-                'string', description=data['description'])
+                'string', description=data['description'], selected=selected)
 
     # Processes menu, creating and deleting configurations when needed
     def process_menu(self, p_menu_id, menu_id, menu_params, output_obj):
@@ -241,15 +241,19 @@ class engine:
                 # Create, skip, delete config
 
                 if decision == create_item:
-                    # Initialize empty config, later UI will publish
-                    # changes to it
-                    output_obj[k] = {}
+                    selected = None
+                    if not is_output_created(k, v):
+                        # Initialize empty config, later UI will publish
+                        # changes to it
+                        output_obj[k] = {}
+                    else:
+                        selected = output_obj[k]
 
                     # No backslash at the end means it is a config
                     new_config_id = menu_id + '/' + k
 
                     self.handle_config_creation(p_menu_id, menu_id, new_config_id,
-                        k, v, 'config', output_obj)
+                        k, v, 'config', output_obj, selected)
 
                 elif decision == delete_item:
                     # Configuration must be deleted, if present.
@@ -267,16 +271,20 @@ class engine:
                     key_data = v['items'][key]
                     new_selector_id = '{}/{}-selector'.format(menu_id, k)
 
-                    # Prepare configuration object. Selector will not push there
-                    # any data. Instead, child menus will.
-                    output_obj[k] = {}
+                    selected = None
+                    if not is_output_created(k, v):
+                        # Prepare configuration object. Selector will not push there
+                        # any data. Instead, child menus will.
+                        output_obj[k] = {}
+                    else:
+                        selected = output_obj[k]
 
                     # Inject the internal menu ID into the source config,
                     # for convenience
                     v['internal_id'] = new_selector_id
 
                     self.handle_config_creation(p_menu_id, menu_id, new_selector_id,
-                            k, key_data, 'selector', output_obj)
+                            k, key_data, 'selector', output_obj, selected)
 
             elif k.startswith('menu-'):
                 # Create, skip, delete menu
@@ -285,7 +293,9 @@ class engine:
                     self.ui_instance.create_menu(menu_id, new_menu_id,
                         description=v['description'])
 
-                    output_obj[k] = {}
+                    if not is_output_created(k, v):
+                        output_obj[k] = {}
+
                     self.items_data[new_menu_id] = {
                         'item_type': 'menu',
                         'name': k,
@@ -409,13 +419,13 @@ class npyscreen_ui(abstract_ui):
         f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Main form')
         fs = f.add(npyscreen.TitleFilenameCombo, name="Select existing theCore configuration")
         f.edit()
+        existing_file = fs.get_value()
 
         self.create_menu(None, 'MAIN', 'Hello, World')
 
-        existing_cfg = None
-
-        if fs.value:
-            existing_cfg = json.load(open(fs.value, 'r'))
+        existing_cfg = {}
+        if existing_file:
+            existing_cfg = json.load(open(existing_file, 'r'))
 
         fl = open('src.json', 'r')
         src = json.load(fl)
@@ -482,7 +492,8 @@ class npyscreen_ui(abstract_ui):
         self.update_form(parent)
 
     def create_config(self, menu_id, id, type, description, long_description=None, **kwargs):
-        self.menu_forms[menu_id]['config_fields'][id] = {
+        fields = self.menu_forms[menu_id]['config_fields']
+        fields[id] = {
             'form': menu_id,
             'type': type,
             'description': description,
@@ -490,18 +501,28 @@ class npyscreen_ui(abstract_ui):
             'last_value': ''
         }
 
+        selected = None
+        if 'selected' in kwargs and kwargs['selected']:
+            selected = kwargs['selected']
+
         if type == 'enum':
+            fields[id]['single'] = kwargs['single']
             if kwargs['single']:
-                self.menu_forms[menu_id]['config_fields'][id]['single'] = True
-                self.menu_forms[menu_id]['config_fields'][id]['option'] = \
+                fields[id]['option'] = \
                     npyscreen.OptionSingleChoice(description, choices=kwargs['values'])
+
+                # Change value a bit, to fit npyscreen needs
+                if selected:
+                    selected = [ selected ]
             else:
-                self.menu_forms[menu_id]['config_fields'][id]['single'] = False
-                self.menu_forms[menu_id]['config_fields'][id]['option'] = \
+                fields[id]['option'] = \
                     npyscreen.OptionMultiChoice(description, choices=kwargs['values'])
         else:
-            self.menu_forms[menu_id]['config_fields'][id]['option'] = \
+            fields[id]['option'] = \
                 npyscreen.OptionFreeText(description)
+
+        if selected:
+            fields[id]['option'].value = selected
 
         self.update_form(menu_id)
 
