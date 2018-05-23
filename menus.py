@@ -336,9 +336,10 @@ class engine:
 
                 elif decision == delete_item:
                     # Configuration must be deleted, if present.
-                    self.ui_instance.delete_config(menu_id, k)
-                    output_obj.pop(k, None)
+                    self.ui_instance.delete_config(menu_id, v['internal_id'])
                     self.items_data.pop(v['internal_id'], None)
+                    v.pop('internal_id', None)
+                    output_obj.pop(k, None)
 
                 elif decision == skip_item:
                     pass # Nothing to do
@@ -398,6 +399,9 @@ class engine:
                     to_delete = [ item_id for item_id, item_v in self.items_data.items() \
                         if item_v['item_type'] == 'config' and not item_v['menu'] in self.items_data ]
                     for k in to_delete:
+                        # Delete all widgets' internal IDs, to prevent them
+                        # to be treated as created
+                        self.items_data[k]['data'].pop('internal_id', None)
                         del self.items_data[k]
 
                 elif decision == skip_item:
