@@ -8,6 +8,14 @@ import sys
 import abc
 import copy
 
+'''
+        "config-simple": {
+            "type": "enum",
+            "description": "Simple test config",
+            "values-selector": "core-devices"
+        }
+'''
+
 params_json=json.loads('''{
     "menu-platform": {
         "description": "Platform configuration menu",
@@ -18,15 +26,10 @@ params_json=json.loads('''{
             "values": ["host", "stm32"]
         },
 
-        "config-clock": {
-            "type": "integer",
-            "description": "Desired clock",
-            "long_description": "The clock can be configured for STM32F4 device only"
-        },
-
         "table-drivers": {
-            "description": "Desired drivers",
+            "description": "Drivers to use",
             "key": "config-name",
+            "value-classes": [ "core-devices", "test-class" ],
             "items": {
                 "config-name": {
                     "type": "enum",
@@ -161,80 +164,85 @@ class engine:
                 if v['item_type'] == 'config':
                     v['container'][src_cfg_name] = kwargs['value']
                 elif v['item_type'] == 'selector':
-                    # Create pseudo-menu for every value selected
-                    # (could be one or more)
-
-                    values = kwargs['value']
-                    if not isinstance(values, list):
-                        values = [ values ]
-
-                    # Prepare list of already created menu related to this selector
-                    already_created = [ v['selected'] for k, v in self.items_data.items() \
-                        if 'selector' in v and v['selector'] == id ]
-                    # Items that should be deleted
-                    to_delete = [ x for x in already_created if x not in values ]
-
-                    for val in to_delete:
-                        # TODO: resolve duplication
-                        pseudo_name = 'menu-' + val
-                        # Clever way to delete a menu: during menu traversal,
-                        # dependency resolve will fail thus forcing menu to be
-                        # deleted.
-                        menu_params[pseudo_name]['depends_on'] = '0 == 1'
-
-                    for val in values:
-                        pseudo_name = 'menu-' + val
-                        pseudo_data = {
-                            'description': val + ' configuration',
-                        }
-                        new_menu_id = '{}/{}-pseudo/'.format(menu_id, pseudo_name)
-
-                        if val in already_created:
-                            # Already created
-                            continue
-
-                        # Inject rest of the configuration data. Inject by
-                        # deepcopy is required to avoid cross-talk between entries
-                        # in a table
-                        pseudo_data.update(copy.deepcopy(menu_params[src_cfg_name]['items']))
-                        # Delete duplicated key item. It resides both "outside"
-                        # and "inside". Delete from "inside"
-                        key_item = menu_params[src_cfg_name]['key']
-                        pseudo_data.pop(key_item, None)
-
-                        # Save internal ID
-                        pseudo_data['internal_id'] = new_menu_id
-
-                        # Inject pseudo-menus
-                        menu_params[pseudo_name] = pseudo_data
-
-                        # Replace output object and create pseudo menus
-                        # BEFORE real menus will be processed.
-                        # This will ensure pseudo menu data is customized
-                        # as we want it.
-
-                        # Use selector's container as new menu parent container
-                        v['container'][src_cfg_name][pseudo_name] = {}
-
-                        self.ui_instance.create_menu(menu_id, new_menu_id,
-                            description=pseudo_data['description'])
-
-                        self.items_data[new_menu_id] = {
-                            'item_type': 'menu',
-                            'selector': id,
-                            'selected': val,
-                            'name': pseudo_name,
-                            'data': pseudo_data,
-                            'p_menu': menu_id,
-                            'container': v['container'][src_cfg_name]
-                        }
-
-                        self.process_menu(menu_id, new_menu_id, pseudo_data,
-                            v['container'][src_cfg_name][pseudo_name])
+                    self.handle_table_configurations(new_keys=kwargs['value'],
+                        selector_data=v, menu_id=menu_id, menu_params=menu_params,
+                        src_cfg_name=src_cfg_name)
 
                 # Re-calculate and update menu accordingly
 
                 self.process_menu(p_menu, menu_id, menu_params, output_obj)
+
+    def handle_table_configurations(self, new_keys, menu_id, selector_data, menu_params, src_cfg_name):
+        # Create pseudo-menu for every value selected
+        # (could be one or more)
+
+        values = new_keys
+        if not isinstance(values, list):
+            values = [ values ]
+
+        # Prepare list of already created menu related to this selector
+        already_created = [ v['selected'] for k, v in self.items_data.items() \
+            if 'selector' in v and v['selector'] == id ]
+        # Items that should be deleted
+        to_delete = [ x for x in already_created if x not in values ]
+
+        for val in to_delete:
+            # TODO: resolve duplication
+            pseudo_name = 'menu-' + val
+            # Clever way to delete a menu: during menu traversal,
+            # dependency resolve will fail thus forcing menu to be
+            # deleted.
+            menu_params[pseudo_name]['depends_on'] = '0 == 1'
+
+        for val in values:
+            pseudo_name = 'menu-' + val
+            pseudo_data = {
+                'description': val + ' configuration',
+            }
+            new_menu_id = '{}/{}-pseudo/'.format(menu_id, pseudo_name)
+
+            if val in already_created:
+                # Already created
+                continue
+
+            # Inject rest of the configuration data. Inject by
+            # deepcopy is required to avoid cross-talk between entries
+            # in a table
+            pseudo_data.update(copy.deepcopy(menu_params[src_cfg_name]['items']))
+            # Delete duplicated key item. It resides both "outside"
+            # and "inside". Delete from "inside"
+            key_item = menu_params[src_cfg_name]['key']
+            pseudo_data.pop(key_item, None)
+
+            # Save internal ID
+            pseudo_data['internal_id'] = new_menu_id
+
+            # Inject pseudo-menus
+            menu_params[pseudo_name] = pseudo_data
+
+            # Replace output object and create pseudo menus
+            # BEFORE real menus will be processed.
+            # This will ensure pseudo menu data is customized
+            # as we want it.
+
+            # Use selector's container as new menu parent container
+            selector_data['container'][src_cfg_name][pseudo_name] = {}
+
+            self.ui_instance.create_menu(menu_id, new_menu_id,
+                description=pseudo_data['description'])
+
+            self.items_data[new_menu_id] = {
+                'item_type': 'menu',
+                'selector': id,
+                'selected': val,
+                'name': pseudo_name,
+                'data': pseudo_data,
+                'p_menu': menu_id,
+                'container': selector_data['container'][src_cfg_name]
+            }
+
+            self.process_menu(menu_id, new_menu_id, pseudo_data,
+                selector_data['container'][src_cfg_name][pseudo_name])
 
     def handle_config_creation(self, p_menu_id, menu_id, new_cfg_id, name, data, item_type, container):
 
