@@ -485,7 +485,7 @@ class npyscreen_ui(abstract_ui):
         ms = f.add(npyscreen.OptionListDisplay, name="Option List",
                 values = npyscreen.OptionList().options,
                 scroll_exit=True,
-                max_height=8)
+                max_height=f.lines - 10)
 
         self.menu_forms[menu_id] = {
             'parent': p_menu_id,
