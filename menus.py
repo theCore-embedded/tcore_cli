@@ -17,6 +17,27 @@ params_json=json.loads('''{
             "values": ["host", "stm32"]
         },
 
+        "table-drivers": {
+            "description": "Desired drivers",
+            "key": "config-name",
+            "items": {
+                "config-name": {
+                    "type": "enum",
+                    "values": [ "dev0", "dev1", "dev2" ],
+                    "description": "Device name",
+                    "single": false
+                },
+                "config-alias": {
+                    "type": "string",
+                    "description": "Device driver C++ alias"
+                },
+                "config-comment": {
+                    "type": "string",
+                    "description": "Device driver C++ comment"
+                }
+            }
+        },
+
         "menu-stm32": {
             "description": "STM32 configuration menu",
 
@@ -127,10 +148,10 @@ class engine:
             v = self.items_data[id]
 
             if menu_id == v['menu']:
-                normalized_cfg_name = v['name']
+                src_cfg_name = v['name']
 
                 if v['item_type'] == 'config':
-                    v['container'][normalized_cfg_name] = kwargs['value']
+                    v['container'][src_cfg_name] = kwargs['value']
                 elif v['item_type'] == 'selector':
                     # Create pseudo-menu for every value selected
                     # (could be one or more)
@@ -139,23 +160,40 @@ class engine:
                     if not isinstance(values, list):
                         values = [ values ]
 
+                    # Prepare list of already created menu related to this selector
+                    already_created = [ v['selected'] for k, v in self.items_data.items() \
+                        if 'selector' in v and v['selector'] == id ]
+                    # Items that should be deleted
+                    to_delete = [ x for x in already_created if x not in values ]
+
+                    for val in to_delete:
+                        # TODO: resolve duplication
+                        pseudo_name = 'menu-' + val
+                        # Clever way to delete a menu: during menu traversal,
+                        # dependency resolve will fail thus forcing menu to be
+                        # deleted.
+                        menu_params[pseudo_name]['depends_on'] = '0 == 1'
+
                     for val in values:
                         pseudo_name = 'menu-' + val
                         pseudo_data = {
-                            'description': val + ' configuration'
+                            'description': val + ' configuration',
                         }
                         new_menu_id = '{}/{}-pseudo/'.format(menu_id, pseudo_name)
 
-                        if pseudo_name in menu_params:
+                        if val in already_created:
                             # Already created
                             continue
 
                         # Inject rest of the configuration data
-                        pseudo_data.update(menu_params[normalized_cfg_name]['items'])
+                        pseudo_data.update(menu_params[src_cfg_name]['items'])
                         # Delete duplicated key item. It resides both "outside"
                         # and "inside". Delete from "inside"
-                        key_item = menu_params[normalized_cfg_name]['key']
+                        key_item = menu_params[src_cfg_name]['key']
                         pseudo_data.pop(key_item, None)
+
+                        # Save internal ID
+                        pseudo_data['internal_id'] = new_menu_id
 
                         # Inject pseudo-menus
                         menu_params[pseudo_name] = pseudo_data
@@ -166,20 +204,23 @@ class engine:
                         # as we want it.
 
                         # Use selector's container as new menu parent container
-                        v['container'][normalized_cfg_name][pseudo_name] = {}
+                        v['container'][src_cfg_name][pseudo_name] = {}
 
                         self.ui_instance.create_menu(menu_id, new_menu_id,
                             description=pseudo_data['description'])
 
                         self.items_data[new_menu_id] = {
                             'item_type': 'menu',
+                            'selector': id,
+                            'selected': val,
                             'name': pseudo_name,
                             'data': pseudo_data,
                             'p_menu': menu_id,
-                            'container': v['container'][normalized_cfg_name]
+                            'container': v['container'][src_cfg_name]
                         }
 
-                        self.process_menu(menu_id, new_menu_id, pseudo_data, v['container'][normalized_cfg_name])
+                        self.process_menu(menu_id, new_menu_id, pseudo_data,
+                            v['container'][src_cfg_name][pseudo_name])
 
                 # Re-calculate and update menu accordingly
 
@@ -195,6 +236,9 @@ class engine:
             'menu': menu_id,
             'container': container
         }
+
+        # Inject the internal config ID into the source config, for convenience
+        data['internal_id'] = new_cfg_id
 
         type = data['type']
 
@@ -287,7 +331,7 @@ class engine:
                     # Configuration must be deleted, if present.
                     self.ui_instance.delete_config(menu_id, k)
                     output_obj.pop(k, None)
-                    self.items_data.pop(k, None)
+                    self.items_data.pop(v['internal_id'], None)
 
                 elif decision == skip_item:
                     pass # Nothing to do
@@ -321,13 +365,18 @@ class engine:
                         'container': output_obj
                     }
 
+                    # Inject the internal menu ID into the source config,
+                    # for convenience
+                    v['internal_id'] = new_menu_id
+
                     self.process_menu(menu_id, new_menu_id, v, output_obj[k])
 
                 elif decision == delete_item:
                     # Delete menu first
-                    target_menu_id = menu_id + '/' + k + '/'
+                    target_menu_id = v['internal_id']
                     target_container = self.items_data[target_menu_id]['container']
                     target_container.pop(k, None)
+                    v.pop('internal_id', None)
 
                     self.ui_instance.delete_menu(target_menu_id)
                     self.items_data.pop(target_menu_id, None)
