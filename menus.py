@@ -6,6 +6,7 @@ import npyscreen, curses
 import re
 import sys
 import abc
+import copy
 
 params_json=json.loads('''{
     "menu-platform": {
@@ -15,6 +16,12 @@ params_json=json.loads('''{
             "description": "Desired platform",
             "type": "enum",
             "values": ["host", "stm32"]
+        },
+
+        "config-clock": {
+            "type": "integer",
+            "description": "Desired clock",
+            "long_description": "The clock can be configured for STM32F4 device only"
         },
 
         "table-drivers": {
@@ -82,8 +89,9 @@ params_json=json.loads('''{
                         "single": false
                     },
                     "config-baud": {
-                        "type": "integer",
+                        "type": "enum",
                         "default": 115200,
+                        "values": [ 115200, 9600 ],
                         "description": "UART baud rate"
                     },
                     "config-alias": {
@@ -185,8 +193,10 @@ class engine:
                             # Already created
                             continue
 
-                        # Inject rest of the configuration data
-                        pseudo_data.update(menu_params[src_cfg_name]['items'])
+                        # Inject rest of the configuration data. Inject by
+                        # deepcopy is required to avoid cross-talk between entries
+                        # in a table
+                        pseudo_data.update(copy.deepcopy(menu_params[src_cfg_name]['items']))
                         # Delete duplicated key item. It resides both "outside"
                         # and "inside". Delete from "inside"
                         key_item = menu_params[src_cfg_name]['key']
@@ -261,12 +271,9 @@ class engine:
     # Processes menu, creating and deleting configurations when needed
     def process_menu(self, p_menu_id, menu_id, menu_params, output_obj):
         # Internal helper to find item by normalized key
-        def is_created(name):
-            for k, v in self.items_data.items():
-                if v['name'] == name:
-                    return True
-
-            return False
+        def is_created(name, data):
+            # If no ID is assigned - no config/menu is created yet
+            return 'internal_id' in data
 
         for k, v in menu_params.items():
             if not k.startswith('config-') and not k.startswith('menu-') and not k.startswith('table-'):
@@ -284,7 +291,7 @@ class engine:
                 # Is dependency satisfied?
                 if self.eval_depends(v['depends_on']):
                     # Is item created?
-                    if is_created(k):
+                    if is_created(k, v):
                         # item is already created, nothing to do
                         decision = skip_item
                     else:
@@ -295,7 +302,7 @@ class engine:
                     # be displayed.
 
                     # Is item created?
-                    if is_created(k):
+                    if is_created(k, v):
                         # Item must be deleted, if present.
                         decision = delete_item
                     else:
@@ -306,7 +313,7 @@ class engine:
                 # no matter what.
 
                 # Is item created?
-                if is_created(k):
+                if is_created(k, v):
                     # item is already created, nothing to do
                     decision = skip_item
                 else:
@@ -345,6 +352,10 @@ class engine:
                     # Prepare configuration object. Selector will not push there
                     # any data. Instead, child menus will.
                     output_obj[k] = {}
+
+                    # Inject the internal menu ID into the source config,
+                    # for convenience
+                    v['internal_id'] = new_selector_id
 
                     self.handle_config_creation(p_menu_id, menu_id, new_selector_id,
                             k, key_data, 'selector', output_obj)
@@ -476,7 +487,15 @@ class npyscreen_ui(abstract_ui):
                 scroll_exit=True,
                 max_height=8)
 
-        self.menu_forms[menu_id] = { 'parent': p_menu_id, 'form': f, 'config_widget': ms, 'debug': debug }
+        self.menu_forms[menu_id] = {
+            'parent': p_menu_id,
+            'form': f,
+            'config_widget': ms,
+            'debug': debug,
+            'description': description,
+            'long_description': long_description
+        }
+
         # Empty configuration dict, will be populated in create_config() function
         self.menu_forms[menu_id]['config_fields'] = {}
         self.menu_forms[menu_id]['nav_link'] = []
@@ -484,12 +503,14 @@ class npyscreen_ui(abstract_ui):
         if p_menu_id:
             self.menu_forms[p_menu_id]['nav_link'].append(
                 npyscreen_switch_form_option(target_form=menu_id,
-                    name='>>> Go to ', value=menu_id, app=f.parentApp),
+                    name='>>> Go to ', value=description, app=f.parentApp),
             )
 
             self.menu_forms[menu_id]['nav_link'] = [
                 npyscreen_switch_form_option(target_form=p_menu_id,
-                    name='<<< Back to ', value=p_menu_id, app=f.parentApp),
+                    name='<<< Back to ',
+                    value=self.menu_forms[p_menu_id]['description'],
+                    app=f.parentApp),
             ]
 
             self.update_form(p_menu_id)
