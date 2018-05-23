@@ -55,19 +55,18 @@ class engine:
             if menu_id == v['menu']:
                 src_cfg_name = v['name']
 
-                if v['item_type'] == 'config':
-                    v['container'][src_cfg_name] = kwargs['value']
-                elif v['item_type'] == 'selector':
+                if v['item_type'] == 'selector':
                     self.handle_table_configurations(new_keys=kwargs['value'],
-                        selector_data=v, menu_id=menu_id, menu_params=menu_params,
-                        src_cfg_name=src_cfg_name)
+                        selector_id=id, selector_data=v, menu_id=menu_id,
+                        menu_params=menu_params, src_cfg_name=src_cfg_name)
+
+                v['container'][src_cfg_name] = kwargs['value']
 
                 # Re-calculate and update menu accordingly
-
                 self.process_menu(p_menu, menu_id, menu_params, output_obj)
 
     # Manages configurations grouped in tables
-    def handle_table_configurations(self, new_keys, menu_id, selector_data, menu_params, src_cfg_name):
+    def handle_table_configurations(self, new_keys, menu_id, selector_id, selector_data, menu_params, src_cfg_name):
         # Create pseudo-menu for every value selected
         # (could be one or more)
 
@@ -77,7 +76,7 @@ class engine:
 
         # Prepare list of already created menu related to this selector
         already_created = [ v['selected'] for k, v in self.items_data.items() \
-            if 'selector' in v and v['selector'] == id ]
+            if 'selector' in v and v['selector'] == selector_id ]
         # Items that should be deleted
         to_delete = [ x for x in already_created if x not in values ]
 
@@ -120,24 +119,28 @@ class engine:
             # This will ensure pseudo menu data is customized
             # as we want it.
 
-            # Use selector's container as new menu parent container
-            selector_data['container'][src_cfg_name][pseudo_name] = {}
+            # Check if output object contain some data.
+            # If yes - do not clear it.
+            if not pseudo_name in selector_data['container']:
+                # Use selector's container as new menu parent container.
+                # Both selector and related menus will be on the same level.
+                selector_data['container'][pseudo_name] = {}
 
             self.ui_instance.create_menu(menu_id, new_menu_id,
                 description=pseudo_data['description'])
 
             self.items_data[new_menu_id] = {
                 'item_type': 'menu',
-                'selector': id,
+                'selector': selector_id,
                 'selected': val,
                 'name': pseudo_name,
                 'data': pseudo_data,
                 'p_menu': menu_id,
-                'container': selector_data['container'][src_cfg_name]
+                'container': selector_data['container']
             }
 
             self.process_menu(menu_id, new_menu_id, pseudo_data,
-                selector_data['container'][src_cfg_name][pseudo_name])
+                selector_data['container'][pseudo_name])
 
     # Creates configuration
     def handle_config_creation(self, p_menu_id, menu_id, new_cfg_id, name, data, item_type, container, selected):
@@ -192,17 +195,14 @@ class engine:
         def is_output_created(name, data):
             return name in output_obj
 
-        for k, v in menu_params.items():
-            if not k.startswith('config-') and not k.startswith('menu-') and not k.startswith('table-'):
-                continue # Skip not interested fields
+        # Possible ways to handle items
+        create_item = 0
+        skip_item = 1
+        delete_item = 2
 
-            # Possible ways to handle items
-            create_item = 0
-            skip_item = 1
-            delete_item = 2
-
+        # Gets decision on what do with the item: create, delete, or skip
+        def get_decision(k, v):
             decision = None
-
             # Is item has a dependency?
             if 'depends_on' in v:
                 # Is dependency satisfied?
@@ -237,6 +237,49 @@ class engine:
                     # New item should be created
                     decision = create_item
 
+            return decision
+
+        # Pre-process table configuration, to make sure pseudo-menus are created where
+        # needed
+        for k in list(menu_params.keys()):
+            if k.startswith('table-'):
+                v = menu_params[k]
+                decision = get_decision(k, v)
+                if decision == create_item:
+                    # Configuration that in fact acts as a key selector
+                    key = v['key']
+                    key_data = v['items'][key]
+                    new_selector_id = '{}/{}-selector'.format(menu_id, k)
+
+                    selected = None
+                    if not is_output_created(k, v):
+                        # Prepare configuration object. Selector will not push there
+                        # any data. Instead, child menus will.
+                        output_obj[k] = {}
+                    else:
+                        selected = output_obj[k]
+
+                    # Inject the internal menu ID into the source config,
+                    # for convenience
+                    v['internal_id'] = new_selector_id
+
+                    self.handle_config_creation(p_menu_id, menu_id, new_selector_id,
+                            k, key_data, 'selector', output_obj, selected)
+
+                    # Some items are pre-selected, thus pseudo-menus
+                    # must be created right here
+                    if selected:
+                        self.handle_table_configurations(selected, menu_id,
+                            new_selector_id, self.items_data[new_selector_id],
+                            menu_params, k)
+
+        # Process rest of the items (non-table)
+        for k, v in menu_params.items():
+            if not k.startswith('config-') and not k.startswith('menu-'):
+                continue # Skip not interested fields
+
+            decision = get_decision(k, v)
+
             if k.startswith('config-'):
                 # Create, skip, delete config
 
@@ -264,27 +307,6 @@ class engine:
 
                 elif decision == skip_item:
                     pass # Nothing to do
-            elif k.startswith('table-'):
-                if decision == create_item:
-                    # Configuration that in fact acts as a key selector
-                    key = v['key']
-                    key_data = v['items'][key]
-                    new_selector_id = '{}/{}-selector'.format(menu_id, k)
-
-                    selected = None
-                    if not is_output_created(k, v):
-                        # Prepare configuration object. Selector will not push there
-                        # any data. Instead, child menus will.
-                        output_obj[k] = {}
-                    else:
-                        selected = output_obj[k]
-
-                    # Inject the internal menu ID into the source config,
-                    # for convenience
-                    v['internal_id'] = new_selector_id
-
-                    self.handle_config_creation(p_menu_id, menu_id, new_selector_id,
-                            k, key_data, 'selector', output_obj, selected)
 
             elif k.startswith('menu-'):
                 # Create, skip, delete menu
