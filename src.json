@@ -10,13 +10,17 @@
 
         "config-name": {
             "description": "Platform",
+            "long-description": [
+                "List of platform types (or microcontrollers, in other words)",
+                "supported by theCore"
+            ],
+
             "type": "enum",
             "values": ["host", "tm4c"]
         },
 
         "menu-tm4c": {
             "description": "TI Tiva TM4C platform configuration menu",
-
             "long-description": [
                 "TM4C is a cheap and robust MCU from Texas instruments "
             ],

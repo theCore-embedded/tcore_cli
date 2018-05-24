@@ -166,6 +166,10 @@ class engine:
 
         type = data['type']
 
+        long_description = None
+        if 'long-description' in data:
+            long_description = data['long-description']
+
         if type == 'enum':
             # Single choice or multi-choice enum
             single = True
@@ -183,13 +187,18 @@ class engine:
 
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'enum', description=data['description'],
+                long_description=long_description,
                 values=values, single=single, selected=selected)
         elif type == 'integer':
             self.ui_instance.create_config(menu_id, new_cfg_id,
-                'integer', description=data['description'], selected=selected)
+                'integer', description=data['description'],
+                long_description=long_description,
+                selected=selected)
         elif type == 'string':
             self.ui_instance.create_config(menu_id, new_cfg_id,
-                'string', description=data['description'], selected=selected)
+                'string', description=data['description'],
+                long_description=long_description,
+                selected=selected)
 
     # Processes menu, creating and deleting configurations when needed
     def process_menu(self, p_menu_id, menu_id, menu_params, output_obj):
@@ -318,9 +327,10 @@ class engine:
             elif k.startswith('menu-'):
                 # Create, skip, delete menu
                 if decision == create_item:
+                    long_description = v['long-description'] if 'long-description' in v else None
                     new_menu_id = menu_id + '/' + k + '/'
                     self.ui_instance.create_menu(menu_id, new_menu_id,
-                        description=v['description'])
+                        description=v['description'], long_description=long_description)
 
                     if not is_output_created(k, v):
                         output_obj[k] = {}
@@ -418,7 +428,6 @@ class npyscreen_mainscreen(npyscreen.ActionFormV2WithMenus):
     def create(self):
         pass
 
-
 class npyscreen_form(npyscreen.ActionFormV2WithMenus):
     def __init__(self, *args, **kwargs):
         self.my_f_id = kwargs['my_f_id']
@@ -429,7 +438,7 @@ class npyscreen_form(npyscreen.ActionFormV2WithMenus):
     def create(self):
         pass
 
-    def adjust_widgets(self, *args, **keywords):
+    def adjust_widgets(self, *args, **kwargs):
         self.ui.check_widgets(self.my_f_id)
 
     def on_ok(self):
@@ -477,8 +486,8 @@ class npyscreen_ui(abstract_ui):
         rows = f.lines
         rely = 9
 
-        debug = f.add(npyscreen.MultiLineEdit, value='', max_height=5)
-        help = f.add(npyscreen.MultiLineEdit, value='help', max_height=10, relx=middle+1, rely=9)
+        debug = f.add(npyscreen.MultiLineEdit, value='', max_height=4)
+        help = f.add(npyscreen.MultiLineEdit, value='Help screen', max_height=10, relx=middle+1, rely=9)
         ms = f.add(npyscreen.OptionListDisplay, name="Option List",
                 values = npyscreen.OptionList().options,
                 scroll_exit=True,
@@ -490,7 +499,9 @@ class npyscreen_ui(abstract_ui):
             'config_widget': ms,
             'debug': debug,
             'description': description,
-            'long_description': long_description
+            'long_description': long_description,
+            'help_widget': help,
+            'current_line': -1
         }
 
         # Empty configuration dict, will be populated in create_config() function
@@ -564,15 +575,17 @@ class npyscreen_ui(abstract_ui):
         self.menu_forms[menu_id]['config_fields'].pop(id, None)
         self.update_form(menu_id)
 
-    ''' Private method, updates form '''
+    # Private method, updates form
     def update_form(self, f_id):
         Options = npyscreen.OptionList()
         options = Options.options
+        fields = self.menu_forms[f_id]['config_fields']
+        navs = self.menu_forms[f_id]['nav_link']
 
-        for id, data in self.menu_forms[f_id]['config_fields'].items():
+        for id, data in fields.items():
             options.append(data['option'])
 
-        for link in self.menu_forms[f_id]['nav_link']:
+        for link in navs:
             options.append(link)
 
         self.menu_forms[f_id]['config_widget'].values = options
@@ -581,13 +594,69 @@ class npyscreen_ui(abstract_ui):
         out = json.dumps(self.engine.get_output(), indent=4)
         self.menu_forms[f_id]['debug'].value = out
 
+        # Help must be loaded, too, but it is unclear where to get it.
+        if len(fields) > 0:
+                descr = self.get_help_from_field(list(fields.values())[0])
+                self.menu_forms[f_id]['help_widget'].value = descr
+        elif len(navs) > 0:
+                descr = self.get_help_from_navlink(navs[0])
+                self.menu_forms[f_id]['help_widget'].value = descr
+
         # This method is heavy, but redraws entire screen without glitching
         # option list itself (as .display() does)
         self.menu_forms[f_id]['form'].DISPLAY()
 
-    ''' Private method, checks if there are any updates on form widgets '''
+    # Private method, gets help from navlink data
+    def get_help_from_navlink(self, nav):
+        target_f_id = nav.target_form
+        descr = '\'' + nav.value + '\'\n'
+
+        if self.menu_forms[target_f_id]['long_description']:
+            descr += '\n'
+            descr += '\n'.join(self.menu_forms[target_f_id]['long_description'])
+
+        return descr
+
+    # Private method, gets help from configuration field data
+    def get_help_from_field(self, field):
+        descr = field['description'] + '\n'
+        if field['long_description']:
+            descr += '\n'
+            descr += '\n'.join(field['long_description'])
+
+        return descr
+
+    # Private method, checks if there are any updates on form widgets
     def check_widgets(self, f_id):
-        fields = self.menu_forms[f_id]['config_fields']
+        f = self.menu_forms[f_id]
+        fields = f['config_fields']
+
+        # Update help, if needed
+
+        cur_line = f['config_widget'].cursor_line
+        if cur_line != f['current_line']:
+            f['current_line'] = cur_line
+            cur_opt = f['config_widget'].values[cur_line]
+
+            # Current option widget can be present either in configuration
+            # or in navlinks.
+
+            # Check navlinks first
+            if cur_opt in self.menu_forms[f_id]['nav_link']:
+                descr = self.get_help_from_navlink(cur_opt)
+
+                f['help_widget'].value = descr
+                f['help_widget'].display()
+                return
+
+            for data in fields.values():
+                if data['option'] == cur_opt:
+                    descr = self.get_help_from_field(data)
+
+                    f['help_widget'].value = descr
+                    f['help_widget'].display()
+
+        # Update configs, if needed
 
         for id, data in fields.items():
             if data['last_value'] != data['option'].value:
@@ -599,9 +668,6 @@ class npyscreen_ui(abstract_ui):
                         # Normalize a value
                         value=value[0]
                 self.engine.on_config_change(f_id, id, value=value)
-                return
-
-        self.update_form(f_id)
 
 #-------------------------------------------------------------------------------
 
