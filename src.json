@@ -1,91 +1,122 @@
 {
     "menu-platform": {
         "description": "Platform configuration menu",
+        "long-description": [
+            "This menu allows to select desired platform, ",
+            "for which application will be compiled. ",
+            "Platform in theCore usually represents a MCU or ",
+            "family of MCUs"
+        ],
 
         "config-name": {
-            "description": "Desired platform",
+            "description": "Platform",
             "type": "enum",
-            "values": ["host", "stm32"]
+            "values": ["host", "tm4c"]
         },
 
-        "table-drivers": {
-            "description": "Drivers to use",
-            "key": "config-name",
-            "value-classes": [ "core-devices", "test-class" ],
-            "items": {
-                "config-name": {
-                    "type": "enum",
-                    "values": [ "dev0", "dev1", "dev2" ],
-                    "description": "Device name",
-                    "single": false
-                },
-                "config-alias": {
-                    "type": "string",
-                    "description": "Device driver C++ alias"
-                },
-                "config-comment": {
-                    "type": "string",
-                    "description": "Device driver C++ comment"
-                }
-            }
-        },
+        "menu-tm4c": {
+            "description": "TI Tiva TM4C platform configuration menu",
 
-        "menu-stm32": {
-            "description": "STM32 configuration menu",
+            "long-description": [
+                "TM4C is a cheap and robust MCU from Texas instruments "
+            ],
 
-            "depends_on": "/menu-platform/config-name == 'stm32'",
+            "depends_on": "/menu-platform/config-name == 'tm4c'",
 
             "config-device": {
+                "description": "TM4C MCU model",
+
+                "long-description": [
+                    "Only TM4C123GH6PM device is supported for now"
+                ],
+
                 "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device1"
-            },
-            "config-device2": {
-                "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device2"
-            },
-            "config-device3": {
-                "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device3"
-            },
-            "config-device44": {
-                "type": "enum",
-                "values": ["STM32F4", "STM32L4"],
-                "description": "Desired device4"
+                "values": [ "TM4C123GH6PM" ]
             },
 
-            "config-clock": {
-                "type": "integer",
-                "depends_on": "/menu-platform/menu-stm32/config-device == 'STM32F4'",
-                "description": "Desired clock",
-                "long_description": "The clock can be configured for STM32F4 device only"
+            "config-console": {
+                "description": "UART used for console",
+                "type": "string"
             },
 
-            "table-uart": {
-                "description": "UART configuration table",
-                "key": "config-channel",
-                "items": {
-                    "config-channel": {
-                        "type": "enum",
-                        "values": [ "UART0", "UART1", "UART2" ],
-                        "description": "Desired UART",
-                        "single": false
+            "menu-timer" : {
+                "description": "System timer configuration",
+
+                "config-source": {
+                    "description": "System timer source",
+                    "type": "enum",
+                    "values": [ "systick" ]
+                },
+
+                "config-freq": {
+                    "description": "System timer frequency",
+                    "type": "integer"
+                },
+
+                "config-owner": {
+                    "description": "Owner of the system timer",
+                    "type": "enum",
+                    "values": [ "user", "thecore" ]
+                },
+
+                "config-comment": {
+                    "description": "Arbitrary C++ comment for timer objects",
+                    "type": "string"
+                }
+            },
+
+            "menu-uart": {
+                "description": "UART configuration",
+                "table-uart": {
+                    "description": "UART configuration table",
+                    "key": "config-channel",
+                    "items": {
+                        "config-channel": {
+                            "type": "enum",
+                            "values": [ "UART0", "UART1" ],
+                            "description": "Enabled UART periphery",
+                            "single": false
+                        },
+                        "config-baud": {
+                            "description": "UART baud rate",
+                            "type": "enum",
+                            "default": 115200,
+                            "values": [ 115200, 9600 ]
+                        },
+                        "config-alias": {
+                            "description": "Driver C++ alias",
+                            "type": "string"
+                        },
+                        "config-comment": {
+                            "description": "Arbitrary driver C++ comment",
+                            "type": "string"
+                        }
                     },
-                    "config-baud": {
-                        "type": "enum",
-                        "default": 115200,
-                        "values": [ 115200, 9600 ],
-                        "description": "UART baud rate"
+
+                    "items-UART0": {
+                        "config-pin-rx": {
+                            "description": "UART0 RX pin",
+                            "type": "enum",
+                            "values": [ "PA0" ]
+                        },
+                        "config-pin-tx": {
+                            "description": "UART0 TX pin",
+                            "type": "enum",
+                            "values": [ "PA1" ]
+                        }
                     },
-                    "config-alias": {
-                        "type": "string",
-                        "description": "UART driver C++ alias"
-                    },
-                    "config-comment": {
-                        "type": "string",
-                        "description": "UART driver C++ comment"
+
+                    "items-UART1": {
+                        "config-pin-rx": {
+                            "description": "UART1 RX pin",
+                            "type": "enum",
+                            "values": [ "PB0", "PC4" ]
+                        },
+                        "config-pin-tx": {
+                            "description": "UART1 TX pin",
+                            "type": "enum",
+                            "values": [ "PB1", "PC5" ]
+                        }
                     }
                 }
             }

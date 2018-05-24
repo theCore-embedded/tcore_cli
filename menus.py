@@ -103,6 +103,13 @@ class engine:
             # deepcopy is required to avoid cross-talk between entries
             # in a table
             pseudo_data.update(copy.deepcopy(menu_params[src_cfg_name]['items']))
+
+            # There can be a configuration, depended on selected key.
+            # TODO: use regex instead of simple string comparsion
+            dependent_items = 'items-' + val
+            if dependent_items in menu_params[src_cfg_name]:
+                pseudo_data.update(copy.deepcopy(menu_params[src_cfg_name][dependent_items]))
+
             # Delete duplicated key item. It resides both "outside"
             # and "inside". Delete from "inside"
             key_item = menu_params[src_cfg_name]['key']
@@ -465,12 +472,17 @@ class npyscreen_ui(abstract_ui):
         f = self.npyscreen_app.addForm(menu_id, npyscreen_form,
             name=description, my_f_id=menu_id, ui=self)
 
-        debug = f.add(npyscreen.MultiLineEdit, value='', max_height=3)
+        cols = f.columns
+        middle = int(cols/2)
+        rows = f.lines
+        rely = 9
 
+        debug = f.add(npyscreen.MultiLineEdit, value='', max_height=5)
+        help = f.add(npyscreen.MultiLineEdit, value='help', max_height=10, relx=middle+1, rely=9)
         ms = f.add(npyscreen.OptionListDisplay, name="Option List",
                 values = npyscreen.OptionList().options,
                 scroll_exit=True,
-                max_height=f.lines - 10)
+                max_height=rows-rely-10, max_width=middle-1, rely=rely)
 
         self.menu_forms[menu_id] = {
             'parent': p_menu_id,
@@ -566,7 +578,8 @@ class npyscreen_ui(abstract_ui):
         self.menu_forms[f_id]['config_widget'].values = options
 
         # Debug output of resulting config
-        self.menu_forms[f_id]['debug'].value = str(self.engine.get_output())
+        out = json.dumps(self.engine.get_output(), indent=4)
+        self.menu_forms[f_id]['debug'].value = out
 
         # This method is heavy, but redraws entire screen without glitching
         # option list itself (as .display() does)
