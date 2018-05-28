@@ -7,6 +7,7 @@ import re
 import sys
 import abc
 import copy
+import sre_yield_mod
 
 #-------------------------------------------------------------------------------
 
@@ -184,6 +185,9 @@ class engine:
                     if 'value-classes' in item and selector in item['value-classes'] ]
             else:
                 values = data['values']
+                # If value specification is not a list, treat it as a pattern
+                if not isinstance(values, list):
+                    values = list(sre_yield_mod.AllStrings(values))
 
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'enum', description=data['description'],
