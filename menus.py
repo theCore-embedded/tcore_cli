@@ -635,8 +635,14 @@ class npyscreen_ui(abstract_ui):
 
         cur_line = f['config_widget'].cursor_line
         if cur_line != f['current_line']:
+            # It is probable that line number is invalid, in case if no
+            # widgets are placed in optionlist
+            try:
+                cur_opt = f['config_widget'].values[cur_line]
+            except:
+                return
+
             f['current_line'] = cur_line
-            cur_opt = f['config_widget'].values[cur_line]
 
             # Current option widget can be present either in configuration
             # or in navlinks.
