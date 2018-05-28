@@ -82,16 +82,16 @@ class engine:
 
         for val in to_delete:
             # TODO: resolve duplication
-            pseudo_name = 'menu-' + val
+            pseudo_name = 'menu-{}'.format(val)
             # Clever way to delete a menu: during menu traversal,
             # dependency resolve will fail thus forcing menu to be
             # deleted.
             menu_params[pseudo_name]['depends_on'] = '0 == 1'
 
         for val in values:
-            pseudo_name = 'menu-' + val
+            pseudo_name = 'menu-{}'.format(val)
             pseudo_data = {
-                'description': val + ' configuration',
+                'description': '{} configuration'.format(val),
             }
             new_menu_id = '{}/{}-pseudo/'.format(menu_id, pseudo_name)
 
@@ -106,7 +106,7 @@ class engine:
 
             # There can be a configuration, depended on selected key.
             # TODO: use regex instead of simple string comparsion
-            dependent_items = 'items-' + val
+            dependent_items = 'items-{}'.format(val)
             if dependent_items in menu_params[src_cfg_name]:
                 pseudo_data.update(copy.deepcopy(menu_params[src_cfg_name][dependent_items]))
 
@@ -444,6 +444,7 @@ class npyscreen_form(npyscreen.ActionFormV2WithMenus):
     def on_ok(self):
         out = self.ui.engine.get_output()
         f = open('output.json', 'w')
+        f.truncate()
         json.dump(out, f, indent=4)
         exit(0)
 
@@ -467,6 +468,7 @@ class npyscreen_ui(abstract_ui):
 
         fl = open('src.json', 'r')
         src = json.load(fl)
+        fl.close()
         self.engine = engine(self, src, existing_cfg)
 
     def set_engine(self, engine):
