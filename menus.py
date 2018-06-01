@@ -48,21 +48,21 @@ class engine:
         self.ui_instance.create_menu(None, root_menu_id, 'Welcome to theCore configurator')
         self.process_menu(None, root_menu_id, self.config_params, self.output_cfg)
 
-    def on_config_change(self, menu_id, id, **kwargs):
-        if id in self.items_data:
+    def on_config_change(self, menu_id, cfg_id, **kwargs):
+        if cfg_id in self.items_data:
 
             p_menu = self.items_data[menu_id]['p_menu']
             menu_params = self.items_data[menu_id]['data']
             normalized_name = self.items_data[menu_id]['name']
             output_obj = self.items_data[menu_id]['container'][normalized_name]
-            v = self.items_data[id]
+            v = self.items_data[cfg_id]
 
             if menu_id == v['menu']:
                 src_cfg_name = v['name']
 
                 if v['item_type'] == 'selector':
                     self.handle_table_configurations(new_keys=kwargs['value'],
-                        selector_id=id, selector_data=v, menu_id=menu_id,
+                        selector_id=cfg_id, selector_data=v, menu_id=menu_id,
                         menu_params=menu_params, src_cfg_name=src_cfg_name)
 
                 v['container'][src_cfg_name] = kwargs['value']
@@ -70,7 +70,8 @@ class engine:
                 # Re-calculate and update menu accordingly
                 self.process_menu(p_menu, menu_id, menu_params, output_obj)
                 self.rebuild_config_links()
-                self.update_all_linked_configs()
+                # Resulting
+                self.update_linked_configs(cfg_id)
 
     # Manages configurations grouped in tables
     def handle_table_configurations(self, new_keys, menu_id, selector_id, selector_data, menu_params, src_cfg_name):
@@ -252,8 +253,14 @@ class engine:
             # Every dependee must be updated.
             for d in deps:
                 d_menu_id = self.items_data[d]['menu']
-                self.ui_instance.update_config(d_menu_id, d,
+                clear_data = self.ui_instance.update_config(d_menu_id, d,
                     depender={'menu_id': menu_id, 'cfg_id': src_cfg_id})
+
+                # Clear output data, in case if value lies out of domain.
+                # User will be forced to enter new values.
+                if clear_data:
+                    name = self.items_data[d]['name']
+                    self.items_data[d]['container'][name] = []
 
     # Processes menu, creating and deleting configurations when needed
     def process_menu(self, p_menu_id, menu_id, menu_params, output_obj):
@@ -645,7 +652,13 @@ class npyscreen_ui(abstract_ui):
 
             values = src_field['option'].value
             dest_field['option'].choices = values
-            # dest_field['option'].display()
+
+            # When some fields are deleted, the selection must be reset
+            if set(dest_field['option'].value).difference(values):
+                dest_field['option'].value = []
+                return True
+
+        return False
 
     def delete_config(self, menu_id, id):
         self.menu_forms[menu_id]['config_fields'].pop(id, None)
@@ -740,7 +753,7 @@ class npyscreen_ui(abstract_ui):
 
         # Update configs, if needed
 
-        for id, data in fields.items():
+        for cfg_id, data in fields.items():
             if data['last_value'] != data['option'].value:
                 data['last_value'] = data['option'].value
 
@@ -751,7 +764,7 @@ class npyscreen_ui(abstract_ui):
                         if data['single']:
                             # Normalize a value
                             value=value[0]
-                self.engine.on_config_change(f_id, id, value=value)
+                self.engine.on_config_change(f_id, cfg_id, value=value)
 
 #-------------------------------------------------------------------------------
 
