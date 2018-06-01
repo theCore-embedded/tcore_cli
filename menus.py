@@ -25,11 +25,15 @@ class abstract_ui(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def create_config(self, menu_id, id, type, description, long_description=None, **kwargs):
+    def create_config(self, menu_id, cfg_id, type, description, long_description=None, **kwargs):
         pass
 
     @abc.abstractmethod
-    def delete_config(self, menu_id, id):
+    def update_config(self, menu_id, cfg_id, depender=None, description=None, long_description=None, **kwargs):
+        pass
+
+    @abc.abstractmethod
+    def delete_config(self, menu_id, cfg_id):
         pass
 
 class engine:
@@ -65,6 +69,8 @@ class engine:
 
                 # Re-calculate and update menu accordingly
                 self.process_menu(p_menu, menu_id, menu_params, output_obj)
+                self.rebuild_config_links()
+                self.update_all_linked_configs()
 
     # Manages configurations grouped in tables
     def handle_table_configurations(self, new_keys, menu_id, selector_id, selector_data, menu_params, src_cfg_name):
@@ -150,9 +156,11 @@ class engine:
             self.process_menu(menu_id, new_menu_id, pseudo_data,
                 selector_data['container'][pseudo_name])
 
+            self.rebuild_config_links()
+            self.update_all_linked_configs()
+
     # Creates configuration
     def handle_config_creation(self, p_menu_id, menu_id, new_cfg_id, name, data, item_type, container, selected):
-
         self.items_data[new_cfg_id] = {
             'item_type': item_type,
             'name': name,
@@ -164,6 +172,13 @@ class engine:
 
         # Inject the internal config ID into the source config, for convenience
         data['internal_id'] = new_cfg_id
+
+        # Selectors and classes should be saved for later use
+
+        if 'config-class' in data:
+            self.items_data[new_cfg_id]['class'] = data['config-class'].split(',')
+        if 'values-from' in data:
+            self.items_data[new_cfg_id]['values_from'] = data['values-from'].split(',')
 
         type = data['type']
 
@@ -177,13 +192,8 @@ class engine:
             if 'single' in data:
                 single = data['single']
 
-            # Values for this configuration can be provided from elsewhere
             values = []
-            if 'values-selector' in data:
-                selector = data['values-selector']
-                values = [ item for item in self.items_data.items() \
-                    if 'value-classes' in item and selector in item['value-classes'] ]
-            else:
+            if 'values' in data:
                 values = data['values']
                 # If value specification is not a list, treat it as a pattern
                 if not isinstance(values, list):
@@ -203,6 +213,47 @@ class engine:
                 'string', description=data['description'],
                 long_description=long_description,
                 selected=selected)
+
+    # Process configuration classes and update configuration data with
+    # correct dependee references
+    def rebuild_config_links(self):
+        src_cfgs = { }
+        dest_cfgs = { }
+
+        for k, v in self.items_data.items():
+            if 'class' in v:
+                v['dependees'] = []
+                src_cfgs[k] = v
+            if 'values_from' in v:
+                v['dependers'] = []
+                dest_cfgs[k] = v
+
+        for src, src_data in src_cfgs.items():
+            for dest, dest_data in dest_cfgs.items():
+                # Find a match between a class and a value selector
+                if not set(src_data['class']).isdisjoint(dest_data['values_from']):
+                    # Create a link
+                    if not dest in src_data['dependees']:
+                        src_data['dependees'] += [dest]
+                    if not src in dest_data['dependers']:
+                        dest_data['dependers'] += [src]
+
+    # Updates all linked configurations
+    def update_all_linked_configs(self):
+        for k in self.items_data:
+            self.update_linked_configs(k)
+
+    # Updates linked configurations from given source config
+    def update_linked_configs(self, src_cfg_id):
+        if 'dependees' in self.items_data[src_cfg_id]:
+            deps = self.items_data[src_cfg_id]['dependees']
+            menu_id = self.items_data[src_cfg_id]['menu']
+
+            # Every dependee must be updated.
+            for d in deps:
+                d_menu_id = self.items_data[d]['menu']
+                self.ui_instance.update_config(d_menu_id, d,
+                    depender={'menu_id': menu_id, 'cfg_id': src_cfg_id})
 
     # Processes menu, creating and deleting configurations when needed
     def process_menu(self, p_menu_id, menu_id, menu_params, output_obj):
@@ -358,20 +409,27 @@ class engine:
                     target_menu_id = v['internal_id']
                     target_container = self.items_data[target_menu_id]['container']
                     target_container.pop(k, None)
-                    v.pop('internal_id', None)
 
                     self.ui_instance.delete_menu(target_menu_id)
                     self.items_data.pop(target_menu_id, None)
 
                     # TODO: sanitize sub-menus (challenge: root menu don't have p_menu_id)
 
+                    # Delete all configs' internal IDs, to prevent them
+                    # to be treated as created
+                    def delete_internal_id(val):
+                        val.pop('internal_id', None)
+                        for nested in val.values():
+                            if isinstance(nested, dict):
+                                delete_internal_id(nested)
+
+                    delete_internal_id(v)
+
                     # Sanitize all configs: delete configuration without menu
                     to_delete = [ item_id for item_id, item_v in self.items_data.items() \
                         if item_v['item_type'] == 'config' and not item_v['menu'] in self.items_data ]
+
                     for k in to_delete:
-                        # Delete all widgets' internal IDs, to prevent them
-                        # to be treated as created
-                        self.items_data[k]['data'].pop('internal_id', None)
                         del self.items_data[k]
 
                 elif decision == skip_item:
@@ -549,7 +607,7 @@ class npyscreen_ui(abstract_ui):
             'type': type,
             'description': description,
             'long_description': long_description,
-            'last_value': ''
+            'last_value': '',
         }
 
         selected = None
@@ -576,6 +634,18 @@ class npyscreen_ui(abstract_ui):
             fields[id]['option'].value = selected
 
         self.update_form(menu_id)
+
+    def update_config(self, menu_id, cfg_id, depender=None, description=None, long_description=None, **kwargs):
+        if depender:
+            src_menu_id = depender['menu_id']
+            src_cfg_id = depender['cfg_id']
+
+            src_field = self.menu_forms[src_menu_id]['config_fields'][src_cfg_id]
+            dest_field = self.menu_forms[menu_id]['config_fields'][cfg_id]
+
+            values = src_field['option'].value
+            dest_field['option'].choices = values
+            # dest_field['option'].display()
 
     def delete_config(self, menu_id, id):
         self.menu_forms[menu_id]['config_fields'].pop(id, None)
@@ -673,12 +743,14 @@ class npyscreen_ui(abstract_ui):
         for id, data in fields.items():
             if data['last_value'] != data['option'].value:
                 data['last_value'] = data['option'].value
+
                 # Report one config at a time
                 value=data['option'].value
-                if data['type'] == 'enum':
-                    if data['single']:
-                        # Normalize a value
-                        value=value[0]
+                if value:
+                    if data['type'] == 'enum':
+                        if data['single']:
+                            # Normalize a value
+                            value=value[0]
                 self.engine.on_config_change(f_id, id, value=value)
 
 #-------------------------------------------------------------------------------
