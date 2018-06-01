@@ -8,6 +8,7 @@ import sys
 import abc
 import copy
 import sre_yield_mod
+import os
 
 #-------------------------------------------------------------------------------
 
@@ -37,11 +38,14 @@ class abstract_ui(abc.ABC):
         pass
 
 class engine:
-    def __init__(self, ui_instance, config_params, output_cfg = {}):
+    def __init__(self, ui_instance, schema_path, output_cfg = {}):
+        schema_path = os.path.abspath(schema_path)
+        fl = open(schema_path, 'r')
         self.ui_instance = ui_instance
         self.items_data = {}
-        self.config_params = config_params
+        self.config_params = json.load(fl)
         self.output_cfg = output_cfg
+        self.schema_path = schema_path
 
         root_menu_id = '/'
         self.ui_instance.set_engine(self)
@@ -317,6 +321,41 @@ class engine:
 
             return decision
 
+        # Pre-process include files.
+        for k in list(menu_params.keys()):
+            if k.startswith('include-'):
+                v = menu_params[k]
+                path = os.path.normpath(os.path.dirname(self.schema_path) + '/' + v['ref'])
+                decision = get_decision(k, v)
+                inc_id = menu_id + '/' + k + '/'
+
+                if decision == create_item:
+                    self.items_data[inc_id] = {
+                        'menu': menu_id,
+                        'p_menu': p_menu_id,
+                        'item_type': 'include',
+                        'name': k,
+                        'data': v,
+                    }
+
+                    # To notify that include is already resolved
+                    v['internal_id'] = inc_id
+
+                    # Add dict object after the incldue
+                    inc = json.load(open(path, 'r'))
+                    # Save keys in case deletion will be requested
+                    self.items_data[inc_id]['inc_items'] = inc.keys()
+                    menu_params.update(inc)
+                elif decision == delete_item:
+                    # Set false dependency on every dependent item,
+                    # so they will be deleted.
+
+                    for to_delete in self.items_data[inc_id]['inc_items']:
+                        menu_params[to_delete]['depends_on'] = '1 == 0'
+
+                    # Pop internal ID from this include
+                    v.pop('internal_id', None)
+
         # Pre-process table configuration, to make sure pseudo-menus are created where
         # needed
         for k in list(menu_params.keys()):
@@ -535,10 +574,7 @@ class npyscreen_ui(abstract_ui):
         if existing_file:
             existing_cfg = json.load(open(existing_file, 'r'))
 
-        fl = open('src.json', 'r')
-        src = json.load(fl)
-        fl.close()
-        self.engine = engine(self, src, existing_cfg)
+        self.engine = engine(self, schema_path='src.json', output_cfg=existing_cfg)
 
     def set_engine(self, engine):
         self.engine = engine
@@ -685,11 +721,11 @@ class npyscreen_ui(abstract_ui):
 
         # Help must be loaded, too, but it is unclear where to get it.
         if len(fields) > 0:
-                descr = self.get_help_from_field(list(fields.values())[0])
-                self.menu_forms[f_id]['help_widget'].value = descr
+            descr = self.get_help_from_field(list(fields.values())[0])
+            self.menu_forms[f_id]['help_widget'].value = descr
         elif len(navs) > 0:
-                descr = self.get_help_from_navlink(navs[0])
-                self.menu_forms[f_id]['help_widget'].value = descr
+            descr = self.get_help_from_navlink(navs[0])
+            self.menu_forms[f_id]['help_widget'].value = descr
 
         # This method is heavy, but redraws entire screen without glitching
         # option list itself (as .display() does)
