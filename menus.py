@@ -593,7 +593,6 @@ class npyscreen_ui(abstract_ui):
         rows = f.lines
         rely = 9
 
-        debug = f.add(npyscreen.MultiLineEdit, value='', max_height=4)
         help = f.add(npyscreen.MultiLineEdit, value='Help screen', max_height=10, relx=middle+1, rely=9)
         ms = f.add(npyscreen.OptionListDisplay, name="Option List",
                 values = npyscreen.OptionList().options,
@@ -604,7 +603,6 @@ class npyscreen_ui(abstract_ui):
             'parent': p_menu_id,
             'form': f,
             'config_widget': ms,
-            'debug': debug,
             'description': description,
             'long_description': long_description,
             'help_widget': help,
@@ -613,15 +611,16 @@ class npyscreen_ui(abstract_ui):
 
         # Empty configuration dict, will be populated in create_config() function
         self.menu_forms[menu_id]['config_fields'] = {}
-        self.menu_forms[menu_id]['nav_link'] = []
+        self.menu_forms[menu_id]['nav_link_fwd'] = []
+        self.menu_forms[menu_id]['nav_link_back'] = []
 
         if p_menu_id:
-            self.menu_forms[p_menu_id]['nav_link'].append(
+            self.menu_forms[p_menu_id]['nav_link_fwd'].append(
                 npyscreen_switch_form_option(target_form=menu_id,
                     name='>>> Go to ', value=description, app=f.parentApp),
             )
 
-            self.menu_forms[menu_id]['nav_link'] = [
+            self.menu_forms[menu_id]['nav_link_back'] = [
                 npyscreen_switch_form_option(target_form=p_menu_id,
                     name='<<< Back to ',
                     value=self.menu_forms[p_menu_id]['description'],
@@ -633,8 +632,8 @@ class npyscreen_ui(abstract_ui):
     def delete_menu(self, menu_id):
         # Delete all links to this form
         for f_id, f_data in self.menu_forms.items():
-            f_data['nav_link'] = \
-                [ nav for nav in f_data['nav_link'] if nav.target_form != menu_id ]
+            f_data['nav_link_fwd'] = \
+                [ nav for nav in f_data['nav_link_fwd'] if nav.target_form != menu_id ]
 
         # Update parent form afterwards
         parent = self.menu_forms[menu_id]['parent']
@@ -705,7 +704,10 @@ class npyscreen_ui(abstract_ui):
         Options = npyscreen.OptionList()
         options = Options.options
         fields = self.menu_forms[f_id]['config_fields']
-        navs = self.menu_forms[f_id]['nav_link']
+        fwd_navs = self.menu_forms[f_id]['nav_link_fwd']
+        back_navs = self.menu_forms[f_id]['nav_link_back']
+        # To preserve order
+        navs = fwd_navs + back_navs
 
         for id, data in fields.items():
             options.append(data['option'])
@@ -714,10 +716,6 @@ class npyscreen_ui(abstract_ui):
             options.append(link)
 
         self.menu_forms[f_id]['config_widget'].values = options
-
-        # Debug output of resulting config
-        out = json.dumps(self.engine.get_output(), indent=4)
-        self.menu_forms[f_id]['debug'].value = out
 
         # Help must be loaded, too, but it is unclear where to get it.
         if len(fields) > 0:
@@ -773,7 +771,8 @@ class npyscreen_ui(abstract_ui):
             # or in navlinks.
 
             # Check navlinks first
-            if cur_opt in self.menu_forms[f_id]['nav_link']:
+            navs = self.menu_forms[f_id]['nav_link_fwd'] + self.menu_forms[f_id]['nav_link_back']
+            if cur_opt in navs:
                 descr = self.get_help_from_navlink(cur_opt)
 
                 f['help_widget'].value = descr
