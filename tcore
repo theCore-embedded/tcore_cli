@@ -13,6 +13,7 @@ import json
 import shutil
 import tabulate
 import glob
+import menus
 
 # ------------------------------------------------------------------------------
 # Common vars

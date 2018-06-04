@@ -532,9 +532,32 @@ class npyscreen_multiline(npyscreen.MultiLineAction):
     def actionHighlighted(self, act_on_this, key_press):
         self.ui.on_item_selected(self.f_id, act_on_this)
 
-class npyscreen_mainscreen(npyscreen.ActionFormV2WithMenus):
+class npyscreen_mainscreen(npyscreen.ActionFormMinimal):
+    # Change OK button text to Exit
+    OK_BUTTON_TEXT='Exit'
+
+    class load_cfg_button(npyscreen.ButtonPress):
+        def whenPressed(self):
+            self.parent.path = npyscreen.selectFile(must_exist=True,confirm_if_exists=False,sort_by_extension=True)
+            self.parent.user_action = 'load_cfg'
+            # Close whole form
+            self.parent.editing = False
+
+    class new_cfg_button(npyscreen.ButtonPress):
+        def whenPressed(self):
+            self.parent.path = npyscreen.selectFile(must_exist=False,sort_by_extension=True)
+            self.parent.user_action = 'new_cfg'
+            # Close whole form
+            self.parent.editing = False
+
     def create(self):
-        pass
+        self.user_action = ''
+        self.path = ''
+        self.new_cfg_btn = self.add(npyscreen_mainscreen.new_cfg_button, name = 'New configuration')
+        self.load_cfg_btn = self.add(npyscreen_mainscreen.load_cfg_button, name = 'Load existing configuration')
+
+    def on_ok(self):
+        exit(0)
 
 class npyscreen_form(npyscreen.ActionFormV2WithMenus):
     def __init__(self, *args, **kwargs):
@@ -556,25 +579,32 @@ class npyscreen_form(npyscreen.ActionFormV2WithMenus):
         json.dump(out, f, indent=4)
         exit(0)
 
+#-------------------------------------------------------------------------------
+
 class npyscreen_ui(abstract_ui):
-    def __init__(self, npyscreen_app):
+    def __init__(self, npyscreen_app, thecore_path, project_path):
         self.menu_forms = {}
         self.npyscreen_app = npyscreen_app
         self.engine = None
+        self.user_action = ''
+
+        schema_path = thecore_path + '/config.json'
 
         # First form to select existing configuration
-        f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Main form')
-        fs = f.add(npyscreen.TitleFilenameCombo, name="Select existing theCore configuration")
+        f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Greetings from theCore configurator')
         f.edit()
-        existing_file = fs.get_value()
+
+        self.user_action = f.user_action
+        self.path = f.path
+
+        output_cfg = {}
+
+        # Check if existing configuration is indeed selected by user
+        if self.user_action == 'load_cfg':
+            output_cfg = json.load(open(self.path, 'r'))
 
         self.create_menu(None, 'MAIN', 'Hello, World')
-
-        existing_cfg = {}
-        if existing_file:
-            existing_cfg = json.load(open(existing_file, 'r'))
-
-        self.engine = engine(self, schema_path='src.json', output_cfg=existing_cfg)
+        self.engine = engine(self, schema_path=schema_path, output_cfg=output_cfg)
 
     def set_engine(self, engine):
         self.engine = engine
@@ -804,14 +834,19 @@ class npyscreen_ui(abstract_ui):
 #-------------------------------------------------------------------------------
 
 class theCoreConfiguratorApp(npyscreen.NPSAppManaged):
+    def __init__(self, thecore_path, project_path, *args, **kwargs):
+        self.thecore_path = os.path.normpath(thecore_path)
+        self.project_path = os.path.normpath(project_path)
+        super().__init__(*args, **kwargs)
+
     def onStart(self):
-        self.ui = npyscreen_ui(self)
+        self.ui = npyscreen_ui(self, self.thecore_path, self.project_path)
 
 #-------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     with open('stdout.log', 'w', 1) as fd:
         sys.stdout=fd
-        App=theCoreConfiguratorApp()
+        App=theCoreConfiguratorApp(os.path.expanduser('~/.theCore/theCore'), '.')
         App.run()
 
