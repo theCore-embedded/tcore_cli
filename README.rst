@@ -107,7 +107,8 @@ Flash binary
 
 ::
 
-    usage: tcore flash [-h] [-s SOURCE] [-b BUILDDIR] [-l] [-d] [-u]
+    usage: tcore flash [-h] [-s SOURCE] [-b BUILDDIR] [-l] [-d DEBUGGER]
+                       [-c DEBUGGER_CONFIG] [-u]
 
     optional arguments:
       -h, --help            show this help message and exit
@@ -120,8 +121,14 @@ Flash binary
                             subdirectories are scanned for binaries.
       -l, --list-bin        List built binaries and avaliable debuggers to perform
                             flash operation
-      -d, --debuggers       Use debugger to perform flash. By default the first
+      -d DEBUGGER, --debugger DEBUGGER
+                            Use debugger to perform flash. By default the first
                             supported debugger in meta.json is used
+      -c DEBUGGER_CONFIG, --debugger-config DEBUGGER_CONFIG
+                            Specify debugger configuration. For example, different
+                            configurations can represent different debugger
+                            versions. By default, first suitable debugger
+                            configuration, defined in meta.json, will be used
       -u, --sudo            Run flash command with root privileges using sudo.
 
 Run custom command within theCore environment

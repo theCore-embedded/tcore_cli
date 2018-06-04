@@ -218,9 +218,8 @@ def do_compile(args):
         if args.buildtype != 'none':
             build_dir = build_dir + '-' + args.buildtype
 
-    # If special flag is set, build treated as host-oriented. No toolchain is
-    # required
-    host_build = 'host' in target_cfg and not target_cfg['host']
+    # Check if build is host-oriented. No toolchain is required in that case.
+    host_build = args.target == 'host'
 
     if not host_build:
         if os.path.isfile(src_dir + '/' + target_cfg['toolchain']):
@@ -300,6 +299,7 @@ def do_flash(args):
 
     targets = []
     with open(metafile, 'r') as fl:
+        # print(fl.read())
         targets = json.loads(fl.read())['targets']
 
     builds_dir = 'build'
@@ -334,14 +334,22 @@ def do_flash(args):
         # Combine all binaries inside builddir with their possible debuggers
         for bin in glob.glob(subdir + '/*.bin'):
             for dbg, dbg_cfg in debuggers.items():
-                binaries_info.append({ 'bin': bin, 'dbg': dbg, 'dbg_cfg': dbg_cfg })
 
-    # Do not include debug information.
-    printable_info = [ [ item['bin'], item['dbg'] ] for item in binaries_info ]
+                if args.debugger and args.debugger != dbg:
+                    logger.debug('skipping debugger: ' + dbg)
+                    continue
+
+                bin_info = { 'bin': bin, 'tgt': output_cfg['target'],
+                    'dbg': dbg, 'dbg_cfg': dbg_cfg, 'dbg_subconf': '\n'.join([ x for x in dbg_cfg.keys() ]) }
+
+                binaries_info.append(bin_info)
+
+    # Debug subtypes names should be included in the list table
+    printable_info = [ [ item['tgt'], item['bin'], item['dbg'], item['dbg_subconf'] ] for item in binaries_info ]
 
     logger.info('found binaries:\n'
         + tabulate.tabulate(printable_info, tablefmt = 'fancy_grid', showindex = "always",
-            headers = ['ID', 'Binary', 'Debugger']))
+            headers = ['ID', 'Target', 'Binary', 'Debugger', 'Debugger configurations']))
 
     # No need to go any further if only listing is requested
     if args.list_bin:
@@ -356,20 +364,35 @@ def do_flash(args):
     else:
         chosen_binary = binaries_info[0]
 
-    logger.info(chosen_binary)
+    def flash_using_openocd(args, binary):
+        dbg = {}
+
+        if args.debugger_config:
+            key = args.debugger_config
+            logger.info('using user-provided OpenOCD subtype: ' + key)
+        else:
+            # Use first debugger
+            key = list(binary['dbg_cfg'].keys())[0]
+            logger.info('using default OpenOCD subtype: ' + key)
+
+        dbg_cfg = binary['dbg_cfg'][key]
+        print(dbg_cfg)
+
+        openocd_cmd = [
+            'openocd -f {} -c \'init; reset halt; flash write_image erase {} {}; reset run; exit\''.format(
+                dbg_cfg['file'], binary['bin'], dbg_cfg['flash_address'])
+        ]
+
+        runenv_args = argparse.Namespace(command = openocd_cmd, sudo = args.sudo)
+        do_runenv(runenv_args)
 
     # TODO: implement at least 'st-link' support additionally
     if chosen_binary['dbg'] != 'openocd':
         logger.error('only OpenOCD debugger is supported so far')
         exit(1)
 
-    openocd_cmd = [
-        'openocd -f {} -c \'init; reset halt; flash write_image erase {} {}; reset run; exit\''.format(
-            chosen_binary['dbg_cfg']['file'], chosen_binary['bin'], chosen_binary['dbg_cfg']['flash_address'])
-    ]
+    flash_using_openocd(args, chosen_binary)
 
-    runenv_args = argparse.Namespace(command = openocd_cmd, sudo = args.sudo)
-    do_runenv(runenv_args)
 
 # Runs a command within theCore environment, optionally with sudo permission
 def do_runenv(args):
@@ -527,9 +550,13 @@ flash_parser.add_argument('-b', '--builddir', type = str,
         + 'By default the `build` directory and subdirectories are scanned for binaries.')
 flash_parser.add_argument('-l', '--list-bin', action = 'store_true',
     help = 'List built binaries and avaliable debuggers to perform flash operation')
-flash_parser.add_argument('-d', '--debuggers', action = 'store_true',
+flash_parser.add_argument('-d', '--debugger', type = str,
     help = 'Use debugger to perform flash. By default the first supported debugger '
         + 'in meta.json is used')
+flash_parser.add_argument('-c', '--debugger-config', type = str,
+    help = 'Specify debugger configuration. For example, different configurations '
+        + ' can represent different debugger versions. By default, first suitable '
+        + ' debugger configuration, defined in meta.json, will be used')
 flash_parser.add_argument('-u', '--sudo', action = 'store_true',
     help = 'Run flash command with root privileges using sudo.')
 
