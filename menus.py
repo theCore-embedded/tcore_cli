@@ -49,16 +49,27 @@ class engine:
 
         root_menu_id = '/'
         self.ui_instance.set_engine(self)
+
+        self.items_data[root_menu_id] = {
+            'item_type': 'menu',
+            'name': None,
+            'data': self.config_params,
+            'p_menu': None,
+            'container': self.output_cfg
+        }
+
         self.ui_instance.create_menu(None, root_menu_id, 'Welcome to theCore configurator')
         self.process_menu(None, root_menu_id, self.config_params, self.output_cfg)
 
     def on_config_change(self, menu_id, cfg_id, **kwargs):
         if cfg_id in self.items_data:
-
             p_menu = self.items_data[menu_id]['p_menu']
             menu_params = self.items_data[menu_id]['data']
             normalized_name = self.items_data[menu_id]['name']
-            output_obj = self.items_data[menu_id]['container'][normalized_name]
+
+            # If no name present - dealing with top-level menu
+            output_obj = self.items_data[menu_id]['container'][normalized_name] \
+                if normalized_name else self.items_data[menu_id]['container']
             v = self.items_data[cfg_id]
 
             if menu_id == v['menu']:
@@ -574,7 +585,7 @@ class npyscreen_form(npyscreen.ActionFormV2WithMenus):
 
     def on_ok(self):
         out = self.ui.engine.get_output()
-        f = open('output.json', 'w')
+        f = open(self.ui.path, 'w')
         f.truncate()
         json.dump(out, f, indent=4)
         exit(0)
@@ -582,16 +593,16 @@ class npyscreen_form(npyscreen.ActionFormV2WithMenus):
 #-------------------------------------------------------------------------------
 
 class npyscreen_ui(abstract_ui):
-    def __init__(self, npyscreen_app, thecore_path, project_path):
+    def __init__(self, npyscreen_app, root_cfg_path, project_path):
         self.menu_forms = {}
         self.npyscreen_app = npyscreen_app
         self.engine = None
         self.user_action = ''
 
-        schema_path = thecore_path + '/config.json'
+        schema_path = root_cfg_path
 
         # First form to select existing configuration
-        f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Greetings from theCore configurator')
+        f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Select configuration option')
         f.edit()
 
         self.user_action = f.user_action
@@ -603,7 +614,7 @@ class npyscreen_ui(abstract_ui):
         if self.user_action == 'load_cfg':
             output_cfg = json.load(open(self.path, 'r'))
 
-        self.create_menu(None, 'MAIN', 'Hello, World')
+        self.create_menu(None, 'MAIN', 'theCore configurator')
         self.engine = engine(self, schema_path=schema_path, output_cfg=output_cfg)
 
     def set_engine(self, engine):
@@ -613,7 +624,7 @@ class npyscreen_ui(abstract_ui):
         # If form name is not MAIN and parent ID is not set,
         # then engine trying to create top-level menu.
         if p_menu_id == None and menu_id != 'MAIN':
-            p_menu_id= 'MAIN'
+            p_menu_id = 'MAIN'
 
         f = self.npyscreen_app.addForm(menu_id, npyscreen_form,
             name=description, my_f_id=menu_id, ui=self)
@@ -834,19 +845,19 @@ class npyscreen_ui(abstract_ui):
 #-------------------------------------------------------------------------------
 
 class theCoreConfiguratorApp(npyscreen.NPSAppManaged):
-    def __init__(self, thecore_path, project_path, *args, **kwargs):
-        self.thecore_path = os.path.normpath(thecore_path)
+    def __init__(self, root_cfg_path, project_path, *args, **kwargs):
+        self.root_cfg_path = os.path.normpath(root_cfg_path)
         self.project_path = os.path.normpath(project_path)
         super().__init__(*args, **kwargs)
 
     def onStart(self):
-        self.ui = npyscreen_ui(self, self.thecore_path, self.project_path)
+        self.ui = npyscreen_ui(self, self.root_cfg_path, self.project_path)
 
 #-------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     with open('stdout.log', 'w', 1) as fd:
         sys.stdout=fd
-        App=theCoreConfiguratorApp(os.path.expanduser('~/.theCore/theCore'), '.')
+        App=theCoreConfiguratorApp(os.path.normpath(os.sys.argv[1]), '.')
         App.run()
 
