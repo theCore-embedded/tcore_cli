@@ -534,6 +534,43 @@ class npyscreen_switch_form_option(npyscreen.OptionFreeText):
     def change_option(self):
         self.app.switchForm(self.target_form)
 
+# Widget to enter integers
+class npyscreen_int_widget(npyscreen.wgtitlefield.TitleText):
+    def make_contained_widgets(self):
+        # Make all widgets before changing handlers
+        super().make_contained_widgets()
+
+        # Drop old handler
+        self.entry_widget.remove_complex_handler(self.entry_widget.t_input_isprint)
+
+        # Place new handler, that will filter user input
+        self.entry_widget.add_complex_handlers([
+                [self.entry_widget.t_input_isprint, self.h_add_num]
+            ])
+
+    def h_add_num(self, inp):
+        self.entry_widget.h_addch(inp)
+
+        if self.entry_widget.editable:
+            # Current position points to the last symbol,
+            cur_pos = self.entry_widget.cursor_position
+            val = self.entry_widget.value
+
+            # No string to edit
+            if len(val) == 0:
+                return
+
+            # Test that value can be converted
+            try:
+                v = int(val[cur_pos - 1])
+            except:
+                print('*** delete')
+                self.entry_widget.h_delete_left(None)
+
+# Option to enter integers
+class npyscreen_int_option(npyscreen.apOptions.Option):
+    WIDGET_TO_USE = npyscreen_int_widget
+
 class npyscreen_multiline(npyscreen.MultiLineAction):
     def __init__(self, *args, **kwargs):
         self.ui=kwargs['ui']
@@ -709,6 +746,9 @@ class npyscreen_ui(abstract_ui):
             else:
                 fields[id]['option'] = \
                     npyscreen.OptionMultiChoice(description, choices=kwargs['values'])
+        elif type == 'integer':
+            fields[id]['option'] = \
+                npyscreen_int_option(description)
         else:
             fields[id]['option'] = \
                 npyscreen.OptionFreeText(description)
