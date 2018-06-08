@@ -9,6 +9,7 @@ import abc
 import copy
 import sre_yield_mod
 import os
+import collections
 
 #-------------------------------------------------------------------------------
 
@@ -58,7 +59,7 @@ class engine:
             'container': self.output_cfg
         }
 
-        self.ui_instance.create_menu(None, root_menu_id, 'Welcome to theCore configurator')
+        self.ui_instance.create_menu(None, root_menu_id, 'Welcome to theCore')
         self.process_menu(None, root_menu_id, self.config_params, self.output_cfg)
 
     def on_config_change(self, menu_id, cfg_id, **kwargs):
@@ -384,6 +385,10 @@ class engine:
                         # Prepare configuration object. Selector will not push there
                         # any data. Instead, child menus will.
                         output_obj[k] = {}
+
+                        # Is there any default value present? If so - use it
+                        if 'default' in v:
+                            selected = v['default']
                     else:
                         selected = output_obj[k]
 
@@ -417,6 +422,11 @@ class engine:
                         # Initialize empty config, later UI will publish
                         # changes to it
                         output_obj[k] = {}
+
+                        # Is there any default value present? If so - use it
+                        if 'default' in v:
+                            selected = v['default']
+
                     else:
                         selected = output_obj[k]
 
@@ -494,6 +504,19 @@ class engine:
 
     # Gets output configuration
     def get_output(self):
+        # Deletes all empty items, results in cool compacct configuration
+        def sanitize(v):
+            items = list(v.keys())
+            for item in items:
+                if isinstance(v[item], dict):
+                    sanitize(v[item])
+
+                # Delete item, if empty
+                if isinstance(v[item], collections.Iterable) and not any(v[item]):
+                    del v[item]
+
+        sanitize(self.output_cfg)
+
         return self.output_cfg
 
     # Helper routine to get dict value using path
@@ -638,6 +661,8 @@ class npyscreen_ui(abstract_ui):
 
         schema_path = root_cfg_path
 
+        npyscreen.setTheme(npyscreen.Themes.BlackOnWhiteTheme)
+
         # First form to select existing configuration
         f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Select configuration option')
         f.edit()
@@ -666,16 +691,34 @@ class npyscreen_ui(abstract_ui):
         f = self.npyscreen_app.addForm(menu_id, npyscreen_form,
             name=description, my_f_id=menu_id, ui=self)
 
-        cols = f.columns
-        middle = int(cols/2)
-        rows = f.lines
-        rely = 9
+        # TODO: enforce:
+        # min cols -> 80
+        # min rows -> 24
 
-        help = f.add(npyscreen.MultiLineEdit, value='Help screen', max_height=10, relx=middle+1, rely=9)
+        cols = f.columns
+        rows = f.lines
+        middle = int(f.columns / 2)
+        rely = 2
+        border = 3
+        help_width = 24
+        help_relx = -help_width - border
+        options_width = cols - 2 * border - 24
+
+        # Snap help screen to middle, if size allows.
+        # Option list will fit into less than 50 symbols, I hope
+        if middle > 60:
+            help_relx = middle
+            options_width = 60
+
+        help = f.add(npyscreen.MultiLineEdit, value='Help screen',
+                max_height=rows-rely-5,
+                max_width=help_width, relx=help_relx,
+                rely=rely)
         ms = f.add(npyscreen.OptionListDisplay, name="Option List",
                 values = npyscreen.OptionList().options,
                 scroll_exit=True,
-                max_height=rows-rely-10, max_width=middle-1, rely=rely)
+                begin_entry_at=14,
+                max_height=rows-rely-5, max_width=options_width, rely=rely)
 
         self.menu_forms[menu_id] = {
             'parent': p_menu_id,
@@ -738,7 +781,8 @@ class npyscreen_ui(abstract_ui):
             fields[id]['single'] = kwargs['single']
             if kwargs['single']:
                 fields[id]['option'] = \
-                    npyscreen.OptionSingleChoice(description, choices=kwargs['values'])
+                    npyscreen.OptionSingleChoice(description, choices=kwargs['values'],
+                        documentation=long_description)
 
                 # Change value a bit, to fit npyscreen needs
                 if selected:
@@ -790,11 +834,11 @@ class npyscreen_ui(abstract_ui):
         # To preserve order
         navs = fwd_navs + back_navs
 
-        for id, data in fields.items():
-            options.append(data['option'])
-
         for link in navs:
             options.append(link)
+
+        for id, data in fields.items():
+            options.append(data['option'])
 
         self.menu_forms[f_id]['config_widget'].values = options
 
@@ -813,7 +857,7 @@ class npyscreen_ui(abstract_ui):
     # Private method, gets help from navlink data
     def get_help_from_navlink(self, nav):
         target_f_id = nav.target_form
-        descr = '\'' + nav.value + '\'\n'
+        descr = nav.value + '\n'
 
         if self.menu_forms[target_f_id]['long_description']:
             descr += '\n'
