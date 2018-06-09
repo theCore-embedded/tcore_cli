@@ -548,7 +548,6 @@ class engine:
             if it.endswith('-pseudo'):
                 it = it[:-7]
 
-            print('chunk: {}'.format(it))
             val = val[it]
 
         return val
@@ -620,7 +619,6 @@ class npyscreen_int_widget(npyscreen.wgtitlefield.TitleText):
             try:
                 v = int(val[cur_pos - 1])
             except:
-                print('*** delete')
                 self.entry_widget.h_delete_left(None)
 
 # Option to enter integers
