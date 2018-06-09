@@ -337,7 +337,15 @@ class engine:
         for k in list(menu_params.keys()):
             if k.startswith('include-'):
                 v = menu_params[k]
-                path = os.path.normpath(os.path.dirname(self.schema_path) + '/' + v['ref'])
+                path = ''
+                # Check for nested includes
+                if 'internal_origin' in v and v['ref'][0] != '/':
+                    origin_item = v['internal_origin']
+                    src_path = self.items_data[origin_item]['path']
+                    path = os.path.normpath(os.path.dirname(src_path) + '/' + v['ref'])
+                else:
+                    path = os.path.normpath(os.path.dirname(self.schema_path) + '/' + v['ref'])
+
                 decision = get_decision(k, v)
                 inc_id = menu_id + k + '/'
 
@@ -346,6 +354,7 @@ class engine:
                         'menu': menu_id,
                         'p_menu': p_menu_id,
                         'item_type': 'include',
+                        'path': path,
                         'name': k,
                         'data': v,
                     }
@@ -355,6 +364,18 @@ class engine:
 
                     # Add dict object after the incldue
                     inc = json.load(open(path, 'r'))
+
+                    # Every menu or include directive must be aware of its origin
+                    def set_origin(obj, origin):
+                        for k, v in obj.items():
+                            if k.startswith('menu-') or k.startswith('include-'):
+                                v['internal_origin'] = origin
+
+                            if isinstance(v, dict):
+                                set_origin(v, origin)
+
+                    set_origin(inc, inc_id)
+
                     # Save keys in case deletion will be requested
                     self.items_data[inc_id]['inc_items'] = inc.keys()
                     menu_params.update(inc)

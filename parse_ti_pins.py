@@ -14,6 +14,8 @@ item={
     'config-afsel': {
         'type': 'enum',
         'description': 'Alternate function',
+        'depends_on': 'config-direction == \'af\'',
+        'long_description': [],
         'values': []
     }
 }
