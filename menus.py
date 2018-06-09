@@ -117,7 +117,7 @@ class engine:
             pseudo_data = {
                 'description': '{} configuration'.format(val),
             }
-            new_menu_id = '{}/{}-pseudo/'.format(menu_id, pseudo_name)
+            new_menu_id = '{}{}-pseudo/'.format(menu_id, pseudo_name)
 
             if val in already_created:
                 # Already created
@@ -300,7 +300,7 @@ class engine:
             # Is item has a dependency?
             if 'depends_on' in v:
                 # Is dependency satisfied?
-                if self.eval_depends(v['depends_on']):
+                if self.eval_depends(v['depends_on'], menu_id):
                     # Is item created?
                     if is_created(k, v):
                         # item is already created, nothing to do
@@ -339,7 +339,7 @@ class engine:
                 v = menu_params[k]
                 path = os.path.normpath(os.path.dirname(self.schema_path) + '/' + v['ref'])
                 decision = get_decision(k, v)
-                inc_id = menu_id + '/' + k + '/'
+                inc_id = menu_id + k + '/'
 
                 if decision == create_item:
                     self.items_data[inc_id] = {
@@ -431,7 +431,7 @@ class engine:
                         selected = output_obj[k]
 
                     # No backslash at the end means it is a config
-                    new_config_id = menu_id + '/' + k
+                    new_config_id = menu_id + k
 
                     self.handle_config_creation(p_menu_id, menu_id, new_config_id,
                         k, v, 'config', output_obj, selected)
@@ -450,7 +450,7 @@ class engine:
                 # Create, skip, delete menu
                 if decision == create_item:
                     long_description = v['long-description'] if 'long-description' in v else None
-                    new_menu_id = menu_id + '/' + k + '/'
+                    new_menu_id = menu_id + k + '/'
                     self.ui_instance.create_menu(menu_id, new_menu_id,
                         description=v['description'], long_description=long_description)
 
@@ -523,15 +523,27 @@ class engine:
     def get_json_val(self, dict_arg, path):
         val=dict_arg
         for it in path.split('/')[1:]:
-            val=val[it]
+            # Pseudo menus are placed without suffix in output configuration
+            if it.endswith('-pseudo'):
+                it = it[:-7]
+
+            print('chunk: {}'.format(it))
+            val = val[it]
 
         return val
 
     # Evaluates "depends" expression
-    def eval_depends(self, depends_str):
+    def eval_depends(self, depends_str, current_container):
         try:
             s=re.search(r'(.*?)\s+(==|!=|>=|<=|>|<)\s+(.*)', depends_str)
-            val=self.get_json_val(self.output_cfg, s[1])
+            path = s[1]
+            if path[0] != '/':
+                path = current_container + path
+
+            # leaf = os.path.basename(path)
+            #val = self.items_data[path]['container'][leaf]
+
+            val=self.get_json_val(self.output_cfg, path)
 
             # To let string be processed in eval() without errors,
             # it should be captured in quotes
@@ -911,9 +923,15 @@ class npyscreen_ui(abstract_ui):
                     f['help_widget'].value = descr
                     f['help_widget'].display()
 
-        # Update configs, if needed
+        # Update configs, if needed. They can be changed 'on fly', so keys
+        # must be copied, instead of iterating dict itself
+        for cfg_id in list(fields.keys()):
+            # Suppose that during traversal some widgets get deleted.
+            # Thus they will be missing in our list
+            if not cfg_id in fields:
+                continue
 
-        for cfg_id, data in fields.items():
+            data = fields[cfg_id]
             if data['last_value'] != data['option'].value:
                 data['last_value'] = data['option'].value
 
