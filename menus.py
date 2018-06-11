@@ -77,7 +77,7 @@ class engine:
                 src_cfg_name = v['name']
 
                 if v['item_type'] == 'selector':
-                    self.handle_table_configurations(new_keys=kwargs['value'],
+                    self.handle_table_configurations(new_values=kwargs['value'],
                         selector_id=cfg_id, selector_data=v, menu_id=menu_id,
                         menu_params=menu_params, src_cfg_name=src_cfg_name)
 
@@ -90,11 +90,11 @@ class engine:
                 self.update_linked_configs(cfg_id)
 
     # Manages configurations grouped in tables
-    def handle_table_configurations(self, new_keys, menu_id, selector_id, selector_data, menu_params, src_cfg_name):
+    def handle_table_configurations(self, new_values, menu_id, selector_id, selector_data, menu_params, src_cfg_name):
         # Create pseudo-menu for every value selected
         # (could be one or more)
 
-        values = new_keys
+        values = new_values
         if not isinstance(values, list):
             values = [ values ]
 
@@ -422,7 +422,7 @@ class engine:
 
                     # Some items are pre-selected, thus pseudo-menus
                     # must be created right here
-                    if selected:
+                    if selected != None:
                         self.handle_table_configurations(selected, menu_id,
                             new_selector_id, self.items_data[new_selector_id],
                             menu_params, k)
@@ -805,7 +805,7 @@ class npyscreen_ui(abstract_ui):
         }
 
         selected = None
-        if 'selected' in kwargs and kwargs['selected']:
+        if 'selected' in kwargs:
             selected = kwargs['selected']
 
         if type == 'enum':
@@ -816,7 +816,7 @@ class npyscreen_ui(abstract_ui):
                         documentation=long_description)
 
                 # Change value a bit, to fit npyscreen needs
-                if selected:
+                if selected != None:
                     selected = [ selected ]
             else:
                 fields[id]['option'] = \
