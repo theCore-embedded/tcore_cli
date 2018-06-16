@@ -10,6 +10,7 @@ import copy
 import sre_yield_mod
 import os
 import collections
+import textwrap
 
 #-------------------------------------------------------------------------------
 
@@ -692,11 +693,41 @@ class npyscreen_ui(abstract_ui):
 
         schema_path = root_cfg_path
 
-        npyscreen.setTheme(npyscreen.Themes.BlackOnWhiteTheme)
+        # TODO: use configurable theme
+        # npyscreen.setTheme(npyscreen.Themes.BlackOnWhiteTheme)
 
         # First form to select existing configuration
         f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Select configuration option')
         f.edit()
+
+        # Calculate dimensions
+        # TODO: enforce:
+        # min cols -> 80
+        # min rows -> 24
+
+        cols = f.columns
+        rows = f.lines
+        middle = int(f.columns / 2)
+        rely = 2
+        border = 3
+
+        help_width = 24
+        help_relx = -help_width - border
+        options_width = cols - 2 * border - help_width
+
+        # Snap help screen to middle, if size allows.
+        # Option list will fit into less than 50 symbols, I hope
+        if middle > 60:
+            help_relx = middle
+            options_width = 60
+            help_width = cols - middle - 4
+
+        self.help_width = help_width
+        self.help_relx = help_relx
+        self.options_width = options_width
+        self.rely = rely
+        self.rows = rows
+        self.cols = cols
 
         self.user_action = f.user_action
         self.path = f.path
@@ -722,34 +753,15 @@ class npyscreen_ui(abstract_ui):
         f = self.npyscreen_app.addForm(menu_id, npyscreen_form,
             name=description, my_f_id=menu_id, ui=self)
 
-        # TODO: enforce:
-        # min cols -> 80
-        # min rows -> 24
-
-        cols = f.columns
-        rows = f.lines
-        middle = int(f.columns / 2)
-        rely = 2
-        border = 3
-        help_width = 24
-        help_relx = -help_width - border
-        options_width = cols - 2 * border - 24
-
-        # Snap help screen to middle, if size allows.
-        # Option list will fit into less than 50 symbols, I hope
-        if middle > 60:
-            help_relx = middle
-            options_width = 60
-
         help = f.add(npyscreen.MultiLineEdit, value='Help screen',
-                max_height=rows-rely-5,
-                max_width=help_width, relx=help_relx,
-                rely=rely)
+                max_height=self.rows-self.rely-5,
+                max_width=self.help_width, relx=self.help_relx,
+                rely=self.rely)
         ms = f.add(npyscreen.OptionListDisplay, name="Option List",
                 values = npyscreen.OptionList().options,
                 scroll_exit=True,
                 begin_entry_at=14,
-                max_height=rows-rely-5, max_width=options_width, rely=rely)
+                max_height=self.rows-self.rely-5, max_width=self.options_width, rely=self.rely)
 
         self.menu_forms[menu_id] = {
             'parent': p_menu_id,
@@ -758,7 +770,7 @@ class npyscreen_ui(abstract_ui):
             'description': description,
             'long_description': long_description,
             'help_widget': help,
-            'current_line': -1
+            'current_line': -1,
         }
 
         # Empty configuration dict, will be populated in create_config() function
@@ -804,6 +816,17 @@ class npyscreen_ui(abstract_ui):
             'last_value': '',
         }
 
+        # Do a wrap, with maximum width of total form length
+        long_list = None
+        if long_description:
+            long_list = []
+            # 10 is darn arbitrary number
+            wrapper = textwrap.TextWrapper(replace_whitespace=False, width=self.cols-10)
+            # Arbitrary 10 here. Totally random number.
+            long_descr = ' '.join(long_description).splitlines()
+            for s in long_descr:
+                long_list += wrapper.wrap(s)
+
         selected = None
         if 'selected' in kwargs:
             selected = kwargs['selected']
@@ -813,7 +836,7 @@ class npyscreen_ui(abstract_ui):
             if kwargs['single']:
                 fields[id]['option'] = \
                     npyscreen.OptionSingleChoice(description, choices=kwargs['values'],
-                        documentation=long_description)
+                        documentation=long_list)
 
                 # Change value a bit, to fit npyscreen needs
                 if selected != None:
@@ -874,11 +897,11 @@ class npyscreen_ui(abstract_ui):
         self.menu_forms[f_id]['config_widget'].values = options
 
         # Help must be loaded, too, but it is unclear where to get it.
-        if len(fields) > 0:
-            descr = self.get_help_from_field(list(fields.values())[0])
-            self.menu_forms[f_id]['help_widget'].value = descr
-        elif len(navs) > 0:
+        if len(navs) > 0:
             descr = self.get_help_from_navlink(navs[0])
+            self.menu_forms[f_id]['help_widget'].value = descr
+        elif len(fields) > 0:
+            descr = self.get_help_from_field(list(fields.values())[0])
             self.menu_forms[f_id]['help_widget'].value = descr
 
         # This method is heavy, but redraws entire screen without glitching
@@ -891,8 +914,14 @@ class npyscreen_ui(abstract_ui):
         descr = nav.value + '\n'
 
         if self.menu_forms[target_f_id]['long_description']:
+            wrapper = textwrap.TextWrapper(replace_whitespace=False, width=self.help_width)
             descr += '\n'
-            descr += '\n'.join(self.menu_forms[target_f_id]['long_description'])
+            long_descr = ' '.join(self.menu_forms[target_f_id]['long_description']).splitlines()
+
+            # Description must span all avaliable space
+            for s in long_descr:
+                descr += '\n'
+                descr += wrapper.fill(s)
 
         return descr
 
@@ -900,8 +929,13 @@ class npyscreen_ui(abstract_ui):
     def get_help_from_field(self, field):
         descr = field['description'] + '\n'
         if field['long_description']:
+            wrapper = textwrap.TextWrapper(replace_whitespace=False, width=self.help_width)
             descr += '\n'
-            descr += '\n'.join(field['long_description'])
+            long_descr = ' '.join(field['long_description']).splitlines()
+            # Description must span all avaliable space
+            for s in long_descr:
+                descr += '\n'
+                descr += wrapper.fill(s)
 
         return descr
 
@@ -981,4 +1015,3 @@ if __name__ == "__main__":
         sys.stdout=fd
         App=theCoreConfiguratorApp(os.path.normpath(os.sys.argv[1]), '.')
         App.run()
-
