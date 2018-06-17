@@ -448,6 +448,7 @@ class engine:
                         # Is there any default value present? If so - use it
                         if 'default' in v:
                             selected = v['default']
+                            output_obj[k] = selected
 
                     else:
                         selected = output_obj[k]
