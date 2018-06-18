@@ -11,6 +11,18 @@ import sre_yield_mod
 import os
 import collections
 import textwrap
+import logging
+
+logger = logging.getLogger('tcore_configure')
+logger.setLevel(logging.DEBUG)
+
+file_log = logging.FileHandler('/tmp/tcore_configure.log')
+file_log.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s')
+file_log.setFormatter(formatter)
+
+logger.addHandler(file_log)
 
 #-------------------------------------------------------------------------------
 
@@ -78,7 +90,7 @@ class engine:
                 src_cfg_name = v['name']
 
                 if v['item_type'] == 'selector':
-                    self.handle_table_configurations(new_values=kwargs['value'],
+                    self.handle_table_configurations(new_selector_values=kwargs['value'],
                         selector_id=cfg_id, selector_data=v, menu_id=menu_id,
                         menu_params=menu_params, src_cfg_name=src_cfg_name)
 
@@ -91,11 +103,11 @@ class engine:
                 self.update_linked_configs(cfg_id)
 
     # Manages configurations grouped in tables
-    def handle_table_configurations(self, new_values, menu_id, selector_id, selector_data, menu_params, src_cfg_name):
+    def handle_table_configurations(self, new_selector_values, menu_id, selector_id, selector_data, menu_params, src_cfg_name):
         # Create pseudo-menu for every value selected
         # (could be one or more)
 
-        values = new_values
+        values = new_selector_values
         if not isinstance(values, list):
             values = [ values ]
 
@@ -229,6 +241,11 @@ class engine:
         elif type == 'string':
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'string', description=data['description'],
+                long_description=long_description,
+                selected=selected)
+        elif type == 'array':
+            self.ui_instance.create_config(menu_id, new_cfg_id,
+                'array', description=data['description'],
                 long_description=long_description,
                 selected=selected)
 
@@ -770,7 +787,7 @@ class npyscreen_ui(abstract_ui):
             'config_widget': ms,
             'description': description,
             'long_description': long_description,
-            'help_widget': help,
+            'help-widget': help,
             'current_line': -1,
         }
 
@@ -807,14 +824,13 @@ class npyscreen_ui(abstract_ui):
         self.npyscreen_app.removeForm(menu_id)
         self.update_form(parent)
 
-    def create_config(self, menu_id, id, type, description, long_description=None, **kwargs):
+    def create_config(self, menu_id, cfg_id, type, description, long_description=None, **kwargs):
         fields = self.menu_forms[menu_id]['config_fields']
-        fields[id] = {
+        fields[cfg_id] = {
             'form': menu_id,
             'type': type,
             'description': description,
             'long_description': long_description,
-            'last_value': '',
         }
 
         # Do a wrap, with maximum width of total form length
@@ -832,10 +848,31 @@ class npyscreen_ui(abstract_ui):
         if 'selected' in kwargs:
             selected = kwargs['selected']
 
-        if type == 'enum':
-            fields[id]['single'] = kwargs['single']
+        if type == 'array':
+            add_ctrl_id = 'array-control-add/' + cfg_id
+            add_ctrl_descr = 'Add array item...'
+            add_ctrl_long = 'Adds item into the \'{}\' array'.format(description)
+
+            fields[add_ctrl_id] = {
+                'form': menu_id,
+                'type': 'array-control-add',
+                'description': add_ctrl_descr,
+                'long_description': [ add_ctrl_long ],
+                'dependee': cfg_id,
+                'last-value': ''
+            }
+
+            fields[add_ctrl_id]['option'] = \
+                npyscreen.OptionFreeText(add_ctrl_descr, documentation=[ add_ctrl_long ])
+            fields[cfg_id]['option'] = \
+                npyscreen.OptionMultiChoice(description, choices=selected, documentation=long_list)
+            fields[cfg_id]['array-control-parent'] = add_ctrl_id
+            fields[cfg_id]['last-value'] = []
+
+        elif type == 'enum':
+            fields[cfg_id]['single'] = kwargs['single']
             if kwargs['single']:
-                fields[id]['option'] = \
+                fields[cfg_id]['option'] = \
                     npyscreen.OptionSingleChoice(description, choices=kwargs['values'],
                         documentation=long_list)
 
@@ -843,17 +880,21 @@ class npyscreen_ui(abstract_ui):
                 if selected != None:
                     selected = [ selected ]
             else:
-                fields[id]['option'] = \
+                fields[cfg_id]['option'] = \
                     npyscreen.OptionMultiChoice(description, choices=kwargs['values'])
+            fields[cfg_id]['last-value'] = []
         elif type == 'integer':
-            fields[id]['option'] = \
+            fields[cfg_id]['option'] = \
                 npyscreen_int_option(description)
+            fields[cfg_id]['last-value'] = ''
         else:
-            fields[id]['option'] = \
+            fields[cfg_id]['option'] = \
                 npyscreen.OptionFreeText(description)
+            fields[cfg_id]['last-value'] = ''
 
         if selected:
-            fields[id]['option'].value = selected
+            fields[cfg_id]['option'].value = selected
+            fields[cfg_id]['last-value'] = selected
 
         self.update_form(menu_id)
 
@@ -875,8 +916,13 @@ class npyscreen_ui(abstract_ui):
 
         return False
 
-    def delete_config(self, menu_id, id):
-        self.menu_forms[menu_id]['config_fields'].pop(id, None)
+    def delete_config(self, menu_id, cfg_id):
+        fields = self.menu_forms[menu_id]['config_fields']
+        if 'array-control-parent' in fields[cfg_id]:
+            control_id = fields['array-control-parent']
+            fields.pop(control_id, None)
+
+        fields.pop(cfg_id, None)
         self.update_form(menu_id)
 
     # Private method, updates form
@@ -900,10 +946,10 @@ class npyscreen_ui(abstract_ui):
         # Help must be loaded, too, but it is unclear where to get it.
         if len(navs) > 0:
             descr = self.get_help_from_navlink(navs[0])
-            self.menu_forms[f_id]['help_widget'].value = descr
+            self.menu_forms[f_id]['help-widget'].value = descr
         elif len(fields) > 0:
             descr = self.get_help_from_field(list(fields.values())[0])
-            self.menu_forms[f_id]['help_widget'].value = descr
+            self.menu_forms[f_id]['help-widget'].value = descr
 
         # This method is heavy, but redraws entire screen without glitching
         # option list itself (as .display() does)
@@ -966,16 +1012,45 @@ class npyscreen_ui(abstract_ui):
             if cur_opt in navs:
                 descr = self.get_help_from_navlink(cur_opt)
 
-                f['help_widget'].value = descr
-                f['help_widget'].display()
+                f['help-widget'].value = descr
+                f['help-widget'].display()
                 return
 
             for data in fields.values():
                 if data['option'] == cur_opt:
                     descr = self.get_help_from_field(data)
 
-                    f['help_widget'].value = descr
-                    f['help_widget'].display()
+                    f['help-widget'].value = descr
+                    f['help-widget'].display()
+
+        # Update dependent widget from array controls. This must be done
+        # before actual update report will be executed to avoid missing data.
+        for cfg_id in list(fields.keys()):
+            data = fields[cfg_id]
+
+            if data['last-value'] != data['option'].value:
+                # Check if control widget was modified.
+                # If so, dependent widget must be updated, too
+                if fields[cfg_id]['type'] == 'array-control-add':
+                    value=data['option'].value
+                    depednee = fields[fields[cfg_id]['dependee']]
+
+                    logger.debug('control widget {} updated with values: {}' \
+                        .format(cfg_id, str(value)))
+
+                    # New value for depended widget
+                    if value in depednee['option'].choices:
+                        # Ignore
+                        continue
+
+                    depednee['option'].choices += [ value ]
+                    depednee['option'].value = depednee['option'].choices
+                    depednee['last-value'] = ''
+
+                    # Reset control widget value
+                    data['option'].value = ''
+
+                    f['config_widget'].display()
 
         # Update configs, if needed. They can be changed 'on fly', so keys
         # must be copied, instead of iterating dict itself
@@ -986,16 +1061,25 @@ class npyscreen_ui(abstract_ui):
                 continue
 
             data = fields[cfg_id]
-            if data['last_value'] != data['option'].value:
-                data['last_value'] = data['option'].value
-
+            if data['last-value'] != data['option'].value:
                 # Report one config at a time
                 value=data['option'].value
+
+                logger.debug('widget {} values changed old: {}, new: {}' \
+                    .format(cfg_id, data['last-value'], value))
+
+                data['last-value'] = value
+
+                if 'array-control-parent' in data:
+                    # Keep total items in sync with selected items
+                    data['option'].choices = value
+
                 if value:
                     if data['type'] == 'enum':
                         if data['single']:
                             # Normalize a value
                             value=value[0]
+
                 self.engine.on_config_change(f_id, cfg_id, value=value)
 
 #-------------------------------------------------------------------------------
@@ -1012,7 +1096,5 @@ class theCoreConfiguratorApp(npyscreen.NPSAppManaged):
 #-------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    with open('stdout.log', 'w', 1) as fd:
-        sys.stdout=fd
-        App=theCoreConfiguratorApp(os.path.normpath(os.sys.argv[1]), '.')
-        App.run()
+    App=theCoreConfiguratorApp(os.path.normpath(os.sys.argv[1]), '.')
+    App.run()
