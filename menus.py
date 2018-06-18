@@ -228,6 +228,7 @@ class engine:
                 # If value specification is not a list, treat it as a pattern
                 if not isinstance(values, list):
                     values = list(sre_yield_mod.AllStrings(values))
+                    values = sorted(values)
 
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'enum', description=data['description'],
