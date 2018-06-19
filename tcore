@@ -309,8 +309,16 @@ def do_flash(args):
 
     # In case if  build directrory explicitly given, no need to traverse
     if args.builddir:
+        if not os.path.isdir(args.builddir):
+            logger.error('no such build directory: ' + args.builddir)
+            exit(1)
+
         build_subdirs.append(args.builddir)
     else:
+        if not os.path.isdir(builds_dir):
+            logger.error('no such build directory: ' + builds_dir)
+            exit(1)
+
         with os.scandir(builds_dir) as it:
             for entry in it:
                 if entry.is_dir():
@@ -328,6 +336,10 @@ def do_flash(args):
             output_cfg = json.loads(fl.read())
 
         logger.debug('found output configuration: ' + str(output_cfg))
+
+        if output_cfg['target'] == 'host':
+            logger.debug('skip host target')
+            continue
 
         debuggers = targets[output_cfg['target']]['debuggers']
 
@@ -356,6 +368,10 @@ def do_flash(args):
         return
 
     chosen_binary = {}
+
+    if len(binaries_info) == 0:
+        logger.info('no binaries for flashing has been found')
+        exit(0)
 
     if len(binaries_info) > 1:
         logger.info('more than one binary-debugger pair is found. Which ID you want to use?')
