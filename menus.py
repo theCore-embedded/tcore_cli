@@ -148,9 +148,12 @@ class engine:
 
             # There can be a configuration, depended on selected key.
             # TODO: use regex instead of simple string comparsion
-            dependent_items = 'items-{}'.format(val)
-            if dependent_items in menu_params[src_cfg_name]:
-                pseudo_data.update(copy.deepcopy(menu_params[src_cfg_name][dependent_items]))
+            for k, v in menu_params[src_cfg_name].items():
+                if k.startswith('items-'):
+                    pattern = k[6:]
+                    if re.search(pattern, val):
+                        dependent_items = 'items-{}'.format(val)
+                        pseudo_data.update(copy.deepcopy(v))
 
             # Delete duplicated key item. It resides both "outside"
             # and "inside". Delete from "inside"
@@ -585,10 +588,11 @@ class engine:
             if path[0] != '/':
                 path = current_container + path
 
-            # leaf = os.path.basename(path)
-            #val = self.items_data[path]['container'][leaf]
+            logger.debug('resolving dependency: {} {} {}'.format(path, s[2], s[3]))
 
             val=self.get_json_val(self.output_cfg, path)
+
+            logger.debug('got val: {}'.format(val))
 
             # To let string be processed in eval() without errors,
             # it should be captured in quotes
