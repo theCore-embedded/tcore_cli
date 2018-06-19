@@ -24,6 +24,11 @@ file_log.setFormatter(formatter)
 
 logger.addHandler(file_log)
 
+# Natural sort helper
+def natural_sort_key(s, _nsre=re.compile('([0-9]+)')):
+    return [int(text) if text.isdigit() else text.lower()
+            for text in re.split(_nsre, s)]
+
 #-------------------------------------------------------------------------------
 
 class abstract_ui(abc.ABC):
@@ -228,7 +233,7 @@ class engine:
                 # If value specification is not a list, treat it as a pattern
                 if not isinstance(values, list):
                     values = list(sre_yield_mod.AllStrings(values))
-                    values = sorted(values)
+                    values = sorted(values, key=natural_sort_key)
 
             self.ui_instance.create_config(menu_id, new_cfg_id,
                 'enum', description=data['description'],
