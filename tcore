@@ -26,7 +26,7 @@ CORE_INSTALLFILE        = CORE_INSTALL_DIR + 'installfile.json'
 # TODO: add ability to globally specify theCore remote (not only upstream)
 CORE_UPSTREAM           = 'https://github.com/forGGe/theCore'
 CORE_THIRDPARTY_DIR     = CORE_INSTALL_DIR + 'thirdparties'
-NIX_DIR                 = '/nix'
+NIX_DIR                 = '~/.nix-profile'
 NIX_INSTALL_SCRIPT      = '/tmp/nix_install.sh'
 NIX_SOURCE_FILE         = os.path.expanduser('~/.nix-profile/etc/profile.d/nix.sh')
 CURRENT_RUNNING_DIR     = os.getcwd()
@@ -85,7 +85,7 @@ def do_bootstrap(args):
 
     # Check if nix exists
 
-    if os.path.isdir(NIX_DIR) and not args.force:
+    if os.path.isdir(os.path.expanduser(NIX_DIR)) and not args.force:
         logger.info('Nix is already installed')
     else:
         logger.info('Installing Nix ... ')
