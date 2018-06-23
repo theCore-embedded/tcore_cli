@@ -180,6 +180,7 @@ def do_configure(args):
     metafile = get_metafile(src_dir)
 
     logger.info('using source directory: ' + src_dir)
+    # Not going to use it here, but configurator will definetely use it inside
     if not metafile:
         logger.error('meta.json must be present in the project directory')
         exit(1)

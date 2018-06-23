@@ -664,33 +664,84 @@ class npyscreen_multiline(npyscreen.MultiLineAction):
         self.ui.on_item_selected(self.f_id, act_on_this)
 
 class npyscreen_mainscreen(npyscreen.ActionFormMinimal):
-    # Change OK button text to Exit
+    # Change OK button text
     OK_BUTTON_TEXT='Exit'
+    def __init__(self, *args, **kwargs):
+        self.metadata=kwargs['metadata']
+        self.project_path=kwargs['project_path']
+        super().__init__(*args, **kwargs)
 
     class load_cfg_button(npyscreen.ButtonPress):
+        def __init__(self, *args, **kwargs):
+            self.cfg_file=kwargs['cfg_file']
+            self.target_name=kwargs['target_name']
+            self.project_path=kwargs['project_path']
+            super().__init__(*args, **kwargs)
+
         def whenPressed(self):
-            self.parent.path = npyscreen.selectFile(must_exist=True,confirm_if_exists=False,sort_by_extension=True)
             self.parent.user_action = 'load_cfg'
+            self.parent.selected_file = os.path.normpath(self.project_path + '/' + self.cfg_file)
+            self.parent.selected_target = self.target_name
             # Close whole form
             self.parent.editing = False
 
     class new_cfg_button(npyscreen.ButtonPress):
+        def __init__(self, *args, **kwargs):
+            self.project_path=kwargs['project_path']
+            super().__init__(*args, **kwargs)
+
         def whenPressed(self):
-            self.parent.path = npyscreen.selectFile(must_exist=False,sort_by_extension=True)
-            self.parent.user_action = 'new_cfg'
-            # Close whole form
-            self.parent.editing = False
+            # file_name = npyscreen.selectFile(must_exist=False,sort_by_extension=True)
+            f = npyscreen.ActionPopup(name = "New target and config creation")
+            cfg_wgt = f.add(npyscreen.TitleText, name = "Config name")
+            tgt_wgt = f.add(npyscreen.TitleText, name = "Target name")
+            f.edit()
+
+            cfg_name = cfg_wgt.value
+            tgt_name = tgt_wgt.value
+
+            if os.path.isfile(os.path.normpath(self.project_path + '/' + cfg_name)):
+                npyscreen.notify_confirm('File {} is already exists, please select another name'.format(cfg_name),
+                    title='File already exists')
+            elif not cfg_name or len(cfg_name) == 0:
+                npyscreen.notify_confirm('Invalid configuration file name',
+                    title='Invalid file name')
+            elif not tgt_name or len(tgt_name) == 0:
+                npyscreen.notify_confirm('Invalid target name',
+                    'Invalid target name')
+            else:
+                self.parent.user_action = 'new_cfg'
+                self.parent.selected_file = cfg_name
+                self.parent.selected_target = tgt_name
+                # Create new metafile
+                self.parent.metadata[tgt_name] = { 'config': cfg_name }
+                # Close whole form
+                self.parent.editing = False
 
     def create(self):
         self.user_action = ''
-        self.path = ''
-        self.new_cfg_btn = self.add(npyscreen_mainscreen.new_cfg_button, name = 'New configuration')
-        self.load_cfg_btn = self.add(npyscreen_mainscreen.load_cfg_button, name = 'Load existing configuration')
+        self.selected_file = ''
+        self.selected_target = ''
+
+        for target, data in self.metadata['targets'].items():
+            cfg_file = data['config']
+            description = data['description']
+            btn_name = 'Edit {} ({})'.format(description, cfg_file)
+            self.add(npyscreen_mainscreen.load_cfg_button, name=btn_name,
+                target_name=target, cfg_file=cfg_file, project_path=self.project_path)
+
+        btn_name = 'Add new configuration'
+        self.add(npyscreen_mainscreen.new_cfg_button, name=btn_name,
+            project_path=self.project_path)
 
     def on_ok(self):
         exit(0)
 
 class npyscreen_form(npyscreen.ActionFormV2WithMenus):
+    OK_BUTTON_TEXT='Save & Exit'
+    CANCEL_BUTTON_TEXT='Exit'
+    CANCEL_BUTTON_BR_OFFSET=(2,20)
+
     def __init__(self, *args, **kwargs):
         self.my_f_id = kwargs['my_f_id']
         self.ui = kwargs['ui']
@@ -708,6 +759,11 @@ class npyscreen_form(npyscreen.ActionFormV2WithMenus):
         f = open(self.ui.path, 'w')
         f.truncate()
         json.dump(out, f, indent=4)
+
+        if self.ui.user_action == 'new_cfg':
+            f = open(self.ui.metafile, 'w')
+            json.dump(self.ui.metadata, f, indent=4)
+
         exit(0)
 
 #-------------------------------------------------------------------------------
@@ -719,13 +775,20 @@ class npyscreen_ui(abstract_ui):
         self.engine = None
         self.user_action = ''
 
+        self.metafile = os.path.normpath(project_path + '/meta.json')
+        logger.debug('looking up for metafile: ' + self.metafile)
+        self.metadata = json.load(open(self.metafile, 'r'))
+
         schema_path = root_cfg_path
 
         # TODO: use configurable theme
         # npyscreen.setTheme(npyscreen.Themes.BlackOnWhiteTheme)
 
+        form_name = self.metadata['name'] + ' configuration'
+
         # First form to select existing configuration
-        f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen, name='Select configuration option')
+        f = self.npyscreen_app.addForm('MAIN', npyscreen_mainscreen,
+            name=form_name, metadata=self.metadata, project_path=project_path)
         f.edit()
 
         # Calculate dimensions
@@ -758,7 +821,8 @@ class npyscreen_ui(abstract_ui):
         self.cols = cols
 
         self.user_action = f.user_action
-        self.path = f.path
+        self.path = f.selected_file
+        self.selected_target = f.selected_target
 
         output_cfg = {}
 
