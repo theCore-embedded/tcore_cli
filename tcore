@@ -13,12 +13,14 @@ import json
 import shutil
 import tabulate
 import glob
+import menus
 
 # ------------------------------------------------------------------------------
 # Common vars
 
 CORE_INSTALL_DIR        = os.path.expanduser('~/.theCore/')
 CORE_SRC_DIR            = CORE_INSTALL_DIR + 'theCore/'
+CORE_CONFIG_PATH        = CORE_SRC_DIR + 'config.json'
 CORE_TOOLCHAIN_DIR      = CORE_SRC_DIR + 'toolchains/'
 CORE_INSTALLFILE        = CORE_INSTALL_DIR + 'installfile.json'
 # TODO: add ability to globally specify theCore remote (not only upstream)
@@ -83,7 +85,7 @@ def do_bootstrap(args):
 
     # Check if nix exists
 
-    if os.path.isdir(NIX_DIR) and not args.force:
+    if os.path.isdir(os.path.expanduser(NIX_DIR)) and not args.force:
         logger.info('Nix is already installed')
     else:
         logger.info('Installing Nix ... ')
@@ -166,6 +168,25 @@ def do_purge(args):
         exit(1)
 
     logger.error('not implemented yet!')
+
+# Configures project, by launching GUI
+def do_configure(args):
+    if not theCore_installed():
+        logger.error('theCore is not installed in {}. You must install it first.'
+            .format(CORE_INSTALL_DIR))
+        exit(1)
+
+    src_dir = os.path.normpath(args.source)
+    metafile = get_metafile(src_dir)
+
+    logger.info('using source directory: ' + src_dir)
+    # Not going to use it here, but configurator will definetely use it inside
+    if not metafile:
+        logger.error('meta.json must be present in the project directory')
+        exit(1)
+
+    configure_app = menus.theCoreConfiguratorApp(CORE_CONFIG_PATH, src_dir)
+    configure_app.run()
 
 # Compiles project specified in arguments
 def do_compile(args):
@@ -309,8 +330,16 @@ def do_flash(args):
 
     # In case if  build directrory explicitly given, no need to traverse
     if args.builddir:
+        if not os.path.isdir(args.builddir):
+            logger.error('no such build directory: ' + args.builddir)
+            exit(1)
+
         build_subdirs.append(args.builddir)
     else:
+        if not os.path.isdir(builds_dir):
+            logger.error('no such build directory: ' + builds_dir)
+            exit(1)
+
         for entry in os.scandir(builds_dir):
             if entry.is_dir():
                 build_subdirs.append(entry.path)
@@ -327,6 +356,10 @@ def do_flash(args):
             output_cfg = json.loads(fl.read())
 
         logger.debug('found output configuration: ' + str(output_cfg))
+
+        if output_cfg['target'] == 'host':
+            logger.debug('skip host target')
+            continue
 
         debuggers = targets[output_cfg['target']]['debuggers']
 
@@ -355,6 +388,10 @@ def do_flash(args):
         return
 
     chosen_binary = {}
+
+    if len(binaries_info) == 0:
+        logger.info('no binaries for flashing has been found')
+        exit(0)
 
     if len(binaries_info) > 1:
         logger.info('more than one binary-debugger pair is found. Which ID you want to use?')
@@ -511,10 +548,21 @@ subparsers_list.append(fetch_parser)
 #     help = 'Optional output directory to place a theCore in, defaults to '
 #         + '`<project_dir>/theCore`. Meaningless in global mode (-g/--global switch).')
 
+# Configure command
+
+configure_parser = subparsers.add_parser('configure',
+    help = 'Configure project: launches GUI to select and modify configuration files')
+configure_parser.add_argument('-s', '--source', type = str,
+    help = 'Path to the source code. Defaults to current directory.',
+    default = os.getcwd())
+configure_parser.set_defaults(handler = do_configure)
+
+subparsers_list.append(configure_parser)
+
 # Compile subcommand
 
 compile_parser = subparsers.add_parser('compile',
-    help = 'Build project')
+    help = 'Complie and build project')
 compile_parser.add_argument('-s', '--source', type = str,
     help = 'Path to the source code. Defaults to current directory.',
     default = os.getcwd())
