@@ -1,6 +1,9 @@
 theCore embedded framework CLI tools
 ====================================
 
+.. image:: https://travis-ci.org/theCore-embedded/tcore_cli.svg?branch=master
+    :target: https://travis-ci.org/theCore-embedded/tcore_cli
+
 Usage:
 
 ::
