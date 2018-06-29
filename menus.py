@@ -218,6 +218,8 @@ class engine:
         if 'values-from' in data:
             self.items_data[new_cfg_id]['values_from'] = data['values-from'].split(',')
 
+        logger.debug('creating cfg: {}'.format(new_cfg_id))
+
         type = data['type']
 
         long_description = None
@@ -973,8 +975,8 @@ class npyscreen_ui(abstract_ui):
             fields[cfg_id]['last-value'] = ''
 
         if selected:
-            fields[cfg_id]['option'].value = str(selected)
-            fields[cfg_id]['last-value'] = str(selected)
+            fields[cfg_id]['option'].value = selected
+            fields[cfg_id]['last-value'] = selected
 
         self.update_form(menu_id)
 
