@@ -59,8 +59,9 @@ def run_with_nix(cmd):
         exit(1)
 
 # Runs command within the Nix shell
-def run_with_nix_shell(cmd):
-    run_with_nix('nix-shell --run \"{}\" {}'.format(cmd, CORE_SRC_DIR))
+def run_with_nix_shell(cmd, args=None):
+    arg_str = '--arg {}'.format(args) if args else ''
+    run_with_nix('nix-shell {} --run \"{}\" {}'.format(arg_str, cmd, CORE_SRC_DIR))
 
 # Returns True if theCore is installed
 def theCore_installed():
@@ -100,6 +101,11 @@ def do_bootstrap(args):
         if rc != 0:
             logger.error('failed to install Nix')
             exit(1)
+
+    # Do not go any futher, if only nix is required
+    if args.nix_only:
+        logger.info('only Nix install is required, skipping theCore download')
+        return
 
     # Check if theCore is downloaded
 
@@ -434,14 +440,15 @@ def do_flash(args):
 # Runs a command within theCore environment, optionally with sudo permission
 def do_runenv(args):
     cmd = ' '.join(args.command)
+    nix_args = args.arg
 
     if args.sudo:
         logger.info('Executing: sudo ' + cmd) # Trick user
         # $(which sudo) is required to run sudo within Nix shell
-        run_with_nix_shell('$(which sudo) ' + cmd)
+        run_with_nix_shell('$(which sudo) ' + cmd, args=nix_args)
     else:
         logger.info('Executing: ' + cmd)
-        run_with_nix_shell(cmd)
+        run_with_nix_shell(cmd, args=nix_args)
 
 
 # ------------------------------------------------------------------------------
@@ -457,6 +464,8 @@ subparsers = parser.add_subparsers(help = 'theCore subcommands')
 
 bootstrap_parser = subparsers.add_parser('bootstrap',
     help = 'Installs theCore development environment')
+bootstrap_parser.add_argument('-n', '--nix-only', action = 'store_true',
+    help = 'Install only Nix, do not download theCore')
 bootstrap_parser.add_argument('-f', '--force', action = 'store_true',
     help = 'Force (re)install theCore dev environment')
 bootstrap_parser.set_defaults(handler = do_bootstrap)
@@ -618,6 +627,8 @@ runenv_parser = subparsers.add_parser('runenv',
     help = 'Run arbitrary command inside theCore environment')
 runenv_parser.add_argument('-u', '--sudo', action = 'store_true',
     help = 'Run command with root privileges using sudo.')
+runenv_parser.add_argument('-a', '--arg', type = str,
+    help = 'Internal. Additional nix-shell name-value arguments.')
 runenv_parser.add_argument('command', nargs='+',
     help = 'Command to execute.')
 runenv_parser.set_defaults(handler = do_runenv)

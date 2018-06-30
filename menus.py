@@ -218,6 +218,8 @@ class engine:
         if 'values-from' in data:
             self.items_data[new_cfg_id]['values_from'] = data['values-from'].split(',')
 
+        logger.debug('creating cfg: {}'.format(new_cfg_id))
+
         type = data['type']
 
         long_description = None
@@ -361,60 +363,66 @@ class engine:
             return decision
 
         # Pre-process include files.
-        for k in list(menu_params.keys()):
-            if k.startswith('include-'):
-                v = menu_params[k]
-                path = ''
-                # Check for nested includes
-                if 'internal_origin' in v and v['ref'][0] != '/':
-                    origin_item = v['internal_origin']
-                    src_path = self.items_data[origin_item]['path']
-                    path = os.path.normpath(os.path.dirname(src_path) + '/' + v['ref'])
-                else:
-                    path = os.path.normpath(os.path.dirname(self.schema_path) + '/' + v['ref'])
+        def preprocess_includes(params):
+            for k in list(params.keys()):
+                if k.startswith('include-'):
+                    v = params[k]
+                    path = ''
+                    # Check for relative includes
+                    if 'internal_origin' in v and v['ref'][0] != '/':
+                        origin_item = v['internal_origin']
+                        src_path = self.items_data[origin_item]['path']
+                        path = os.path.normpath(os.path.dirname(src_path) + '/' + v['ref'])
+                    else:
+                        path = os.path.normpath(os.path.dirname(self.schema_path) + '/' + v['ref'])
 
-                decision = get_decision(k, v)
-                inc_id = menu_id + k + '/'
+                    decision = get_decision(k, v)
+                    inc_id = menu_id + k + '/'
 
-                if decision == create_item:
-                    self.items_data[inc_id] = {
-                        'menu': menu_id,
-                        'p_menu': p_menu_id,
-                        'item_type': 'include',
-                        'path': path,
-                        'name': k,
-                        'data': v,
-                    }
+                    if decision == create_item:
+                        self.items_data[inc_id] = {
+                            'menu': menu_id,
+                            'p_menu': p_menu_id,
+                            'item_type': 'include',
+                            'path': path,
+                            'name': k,
+                            'data': v,
+                        }
 
-                    # To notify that include is already resolved
-                    v['internal_id'] = inc_id
+                        # To notify that include is already resolved
+                        v['internal_id'] = inc_id
 
-                    # Add dict object after the incldue
-                    inc = json.load(open(path, 'r'))
+                        # Add dict object after the incldue
+                        inc = json.load(open(path, 'r'))
 
-                    # Every menu or include directive must be aware of its origin
-                    def set_origin(obj, origin):
-                        for k, v in obj.items():
-                            if k.startswith('menu-') or k.startswith('include-'):
-                                v['internal_origin'] = origin
+                        # Every menu or include directive must be aware of its origin
+                        def set_origin(obj, origin):
+                            for k, v in obj.items():
+                                if k.startswith('menu-') or k.startswith('include-'):
+                                    v['internal_origin'] = origin
 
-                            if isinstance(v, dict):
-                                set_origin(v, origin)
+                                if isinstance(v, dict):
+                                    set_origin(v, origin)
 
-                    set_origin(inc, inc_id)
+                        set_origin(inc, inc_id)
 
-                    # Save keys in case deletion will be requested
-                    self.items_data[inc_id]['inc_items'] = inc.keys()
-                    menu_params.update(inc)
-                elif decision == delete_item:
-                    # Set false dependency on every dependent item,
-                    # so they will be deleted.
+                        # Save keys in case deletion will be requested
+                        self.items_data[inc_id]['inc_items'] = inc.keys()
+                        # Included dict can also contain 'includes' in it.
+                        preprocess_includes(inc)
+                        params.update(inc)
 
-                    for to_delete in self.items_data[inc_id]['inc_items']:
-                        menu_params[to_delete]['depends_on'] = '1 == 0'
+                    elif decision == delete_item:
+                        # Set false dependency on every dependent item,
+                        # so they will be deleted.
 
-                    # Pop internal ID from this include
-                    v.pop('internal_id', None)
+                        for to_delete in self.items_data[inc_id]['inc_items']:
+                            params[to_delete]['depends_on'] = '1 == 0'
+
+                        # Pop internal ID from this include
+                        v.pop('internal_id', None)
+
+        preprocess_includes(menu_params)
 
         # Pre-process table configuration, to make sure pseudo-menus are created where
         # needed
