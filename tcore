@@ -440,7 +440,7 @@ def do_flash(args):
 # Runs a command within theCore environment, optionally with sudo permission
 def do_runenv(args):
     cmd = ' '.join(args.command)
-    nix_args = args.arg
+    nix_args = args.arg if hasattr(args, 'arg') else None
 
     if args.sudo:
         logger.info('Executing: sudo ' + cmd) # Trick user
