@@ -125,7 +125,7 @@ def do_bootstrap(args):
         run_with_nix('nix-env -i git')
         # Upstream name is way better name for such theCore installation
         run_with_nix('git clone {} {} -o upstream'.format(CORE_UPSTREAM, CORE_SRC_DIR))
-        run_with_nix('cd {} && git submodule update --init --recursive'.format(CORE_SRC_DIR))
+        run_with_nix('cd {} && git submodule update --init --recursive && git describe --tags'.format(CORE_SRC_DIR))
 
         # Initial install file contents
         installfile_content = { 'tcore_ver': VERSION }
@@ -163,7 +163,7 @@ def do_fetch(args):
             .format(CORE_INSTALL_DIR))
         exit(1)
 
-    run_with_nix('cd {} && git fetch {} {} && git checkout -q FETCH_HEAD'
+    run_with_nix('cd {} && git fetch {} {} && git checkout -q FETCH_HEAD && git describe --tags'
         .format(CORE_SRC_DIR, args.remote, args.ref))
 
 # Deletes Nix and theCore
@@ -440,7 +440,7 @@ def do_flash(args):
 # Runs a command within theCore environment, optionally with sudo permission
 def do_runenv(args):
     cmd = ' '.join(args.command)
-    nix_args = args.arg
+    nix_args = args.arg if hasattr(args, 'arg') else None
 
     if args.sudo:
         logger.info('Executing: sudo ' + cmd) # Trick user
