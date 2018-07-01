@@ -61,6 +61,7 @@ def run_with_nix(cmd):
 # Runs command within the Nix shell
 def run_with_nix_shell(cmd, args=None):
     arg_str = '--arg {}'.format(args) if args else ''
+    # TODO: use '--pure' flag?
     run_with_nix('nix-shell {} --run \"{}\" {}'.format(arg_str, cmd, CORE_SRC_DIR))
 
 # Returns True if theCore is installed
@@ -125,7 +126,7 @@ def do_bootstrap(args):
         run_with_nix('nix-env -i git')
         # Upstream name is way better name for such theCore installation
         run_with_nix('git clone {} {} -o upstream'.format(CORE_UPSTREAM, CORE_SRC_DIR))
-        run_with_nix('cd {} && git submodule update --init --recursive'.format(CORE_SRC_DIR))
+        run_with_nix('cd {} && git submodule update --init --recursive && git describe --tags'.format(CORE_SRC_DIR))
 
         # Initial install file contents
         installfile_content = { 'tcore_ver': VERSION }
@@ -163,7 +164,7 @@ def do_fetch(args):
             .format(CORE_INSTALL_DIR))
         exit(1)
 
-    run_with_nix('cd {} && git fetch {} {} && git checkout -q FETCH_HEAD'
+    run_with_nix('cd {} && git fetch {} {} && git checkout -q FETCH_HEAD && git describe --tags'
         .format(CORE_SRC_DIR, args.remote, args.ref))
 
 # Deletes Nix and theCore
@@ -201,7 +202,7 @@ def do_compile(args):
             .format(CORE_INSTALL_DIR))
         exit(1)
 
-    src_dir = os.path.normpath(args.source)
+    src_dir = os.path.abspath(os.path.normpath(args.source))
     metafile = get_metafile(src_dir)
 
     logger.info('using source directory: ' + src_dir)
@@ -296,9 +297,12 @@ def do_compile(args):
 
     thecore_cfg_param = '-DTHECORE_TARGET_CONFIG_FILE=' + config_json_path
     thecore_thirdparty_param = '-DTHECORE_THIRDPARTY_DIR=' + CORE_THIRDPARTY_DIR
+    # TODO: add possibility to override build thirdparty dir
     thecore_thirdparty_worktrees = '-DTHECORE_BUILD_THIRDPARTY_DIR=' + src_dir + '/thirdparties'
     thecore_dir_param = '-DCORE_DIR=' + CORE_SRC_DIR
 
+    # Print some useful information
+    run_with_nix_shell('cmake --version')
     run_with_nix_shell('cmake {} {} {} {} {} {} {}'
         .format(thecore_dir_param, thecore_thirdparty_param, thecore_thirdparty_worktrees,
             cmake_build_type, cmake_toolchain, thecore_cfg_param, src_dir))
@@ -577,8 +581,9 @@ compile_parser.add_argument('-s', '--source', type = str,
     help = 'Path to the source code. Defaults to current directory.',
     default = os.getcwd())
 compile_parser.add_argument('-b', '--builddir', type = str,
-    help = 'Path to the build directory. Defaults to ./build/<target_name>-<build_type>,'
-            + ' where <target_name> is the selected target and <build_type> '
+    help = 'Path to the build directory. Defaults to <src_dir>/build/<target_name>-<build_type>,'
+            + ' where <src_dir> is a directory where the project sources are placed,'
+            + ' <target_name> is the selected target, <build_type> '
             + ' is a build type supplied with --buildtype parameter')
 compile_parser.add_argument('--buildtype', type = str,
     help = 'Build type. Default is none',
